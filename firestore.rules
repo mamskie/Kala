@@ -9,8 +9,17 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/profiles/$(uid)).data.slug is string;
     }
     function validSlug(slug) {
-      return slug is string && slug.size() >= 3 && slug.size() <= 40
-        && slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$');
+      return slug is string && slug.size() >= 3 && slug.size() <= 30
+        && slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && !(slug in ['www','api','admin','app','auth','login','support','mail']);
+    }
+    function validPhoto(data) {
+      return data.region is string && data.region.size() <= 160 && data.created is int
+        && data.get('caption', '') is string && data.get('caption', '').size() <= 240
+        && data.get('people', '') is string && data.get('people', '').size() <= 120
+        && data.get('date', '') is string && data.get('date', '').matches('^([0-9]{4}-[0-9]{2}-[0-9]{2})?$')
+        && data.get('coverAt', 0) is int
+        && data.get('visibility', 'private') in ['public', 'private'];
     }
     match /profiles/{uid} {
       allow get: if owner(uid);
@@ -23,12 +32,25 @@ service cloud.firestore {
           resource.data.slug == request.resource.data.slug ||
           !existsAfter(/databases/$(database)/documents/galleries/$(resource.data.slug)));
       match /photos/{photo} {
-        allow delete: if owner(uid);
-        allow read: if owner(uid) || shared(uid);
-        allow create: if owner(uid)
-          && request.resource.data.keys().hasOnly(['region','created'])
-          && request.resource.data.region is string && request.resource.data.region.size() <= 160
-          && request.resource.data.created is int;
+        allow delete: if owner(uid)
+          && getAfter(/databases/$(database)/documents/profiles/$(uid)/trashedPhotos/$(photo)).data.deletedAt == request.time;
+        allow read: if owner(uid) || (shared(uid) && resource.data.visibility == 'public');
+        allow create: if owner(uid) && validPhoto(request.resource.data)
+          && request.resource.data.keys().hasOnly(['region','created','caption','people','date','coverAt','visibility'])
+          && (!exists(/databases/$(database)/documents/profiles/$(uid)/trashedPhotos/$(photo))
+            || get(/databases/$(database)/documents/profiles/$(uid)/trashedPhotos/$(photo)).data.deletedAt
+              + duration.value(30, 'd') > request.time);
+        allow update: if owner(uid) && validPhoto(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caption','people','date','coverAt','visibility']);
+      }
+      match /trashedPhotos/{photo} {
+        allow read: if owner(uid);
+        allow delete: if owner(uid)
+          && resource.data.deletedAt + duration.value(30, 'd') > request.time
+          && existsAfter(/databases/$(database)/documents/profiles/$(uid)/photos/$(photo));
+        allow create: if owner(uid) && validPhoto(request.resource.data)
+          && request.resource.data.keys().hasOnly(['region','created','caption','people','date','coverAt','visibility','deletedAt'])
+          && request.resource.data.deletedAt == request.time;
       }
     }
     match /galleries/{slug} {

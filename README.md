@@ -12,6 +12,10 @@ Galeri foto di atas peta Jawa dan pulau-pulau yang termasuk wilayah administrati
 
 ## Tautan dan subdomain
 
+Foto bersifat privat secara default. Aktifkan “Tampilkan di galeri publik” pada foto yang ingin dibagikan. Berkas publik hanya dapat diambil selama foto masih aktif dan galeri diterbitkan.
+
+Foto yang masuk tong sampah dapat dipulihkan selama 30 hari. Pada mode demo, aplikasi membersihkan foto kedaluwarsa saat demo dibuka. Untuk Firebase produksi, jadwalkan pekerjaan admin yang menghapus objek Storage dan dokumen `trashedPhotos` yang kedaluwarsa. Aturan Firebase menutup pemulihan kedaluwarsa, sementara pembersihan fisik berkas memerlukan pekerjaan admin tersebut.
+
 Tanpa domain induk, tombol bagikan menghasilkan `/?galeri=nama`. Untuk `nama.atlas.example.com`, arahkan DNS wildcard ke hosting yang mendukung wildcard dan sertifikat TLS, lalu isi `galleryDomain` dengan `atlas.example.com`. Semua host galeri harus menyajikan direktori `dist` yang sama. Gunakan domain utama untuk login dan tambahkan CORS GET untuk origin galeri. Untuk subdomain arbitrer, konfigurasi CORS bucket dapat memakai origin `*` dengan SDK bearer token. Aturan Firebase tetap menentukan siapa yang dapat membaca foto.
 
 ## Data peta

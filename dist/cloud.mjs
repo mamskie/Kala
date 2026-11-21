@@ -12,6 +12,7 @@ export async function connect() {
   const profileRef = uid => db.doc(database, "profiles", uid);
   const slugRef = slug => db.doc(database, "galleries", slug);
   const photoList = uid => db.collection(database, "profiles", uid, "photos");
+  const trashList = uid => db.collection(database, "profiles", uid, "trashedPhotos");
 
   return {
     request: (uid, place, name) => db.setDoc(db.doc(database, "regionRequests", uid, "places", place), {
@@ -26,38 +27,44 @@ export async function connect() {
     async gallery(slug) {
       return (await db.getDoc(slugRef(slug))).data()?.uid;
     },
-    async list(uid) {
-      const snapshot = await db.getDocs(photoList(uid));
+    async list(uid, published = false) {
+      const photos = photoList(uid);
+      const snapshot = await db.getDocs(published ? db.query(photos, db.where("visibility", "==", "public")) : photos);
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     },
-    async save(uid, region, blob) {
+    async trash(uid) {
+      const snapshot = await db.getDocs(trashList(uid));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), deletedAt: doc.data().deletedAt.toMillis() }));
+    },
+    updatePhoto: (uid, id, changes) => db.updateDoc(db.doc(photoList(uid), id), changes),
+    async movePhoto(uid, id, restore) {
+      const active = db.doc(photoList(uid), id);
+      const deleted = db.doc(trashList(uid), id);
+      const from = restore ? deleted : active;
+      const to = restore ? active : deleted;
+      await db.runTransaction(database, async transaction => {
+        const photo = (await transaction.get(from)).data();
+        if (!photo) throw new Error("Foto tidak ditemukan.");
+        const {deletedAt, ...details} = photo;
+        transaction.set(to, restore ? details : {...details, deletedAt: db.serverTimestamp()});
+        transaction.delete(from);
+      });
+    },
+    async save(uid, region, blob, date) {
       const doc = db.doc(photoList(uid));
       const object = storage.ref(bucket, "memories/" + uid + "/" + doc.id);
+      const details = { region, created: Date.now(), date };
       await storage.uploadBytes(object, blob, { contentType: blob.type, cacheControl: "private, no-store" });
       try {
-        await db.setDoc(doc, { region, created: Date.now() });
+        await db.setDoc(doc, details);
       } catch (error) {
         await storage.deleteObject(object).catch(console.error);
         throw error;
       }
-      return { id: doc.id, region, created: Date.now(), blob };
+      return { id: doc.id, ...details, blob };
     },
     async photo(uid, id) {
       return storage.getBlob(storage.ref(bucket, "memories/" + uid + "/" + id), 5 * 1024 * 1024);
-    },
-    async remove(uid, id) {
-      await db.deleteDoc(db.doc(photoList(uid), id));
-      const object = storage.ref(bucket, "memories/" + uid + "/" + id);
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          await storage.deleteObject(object);
-          return true;
-        } catch (error) {
-          if (error.code === "storage/object-not-found") return true;
-          if (attempt === 1) console.error(error);
-        }
-      }
-      return false;
     },
     async publish(uid, next) {
       await db.runTransaction(database, async transaction => {

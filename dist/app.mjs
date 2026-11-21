@@ -1,5 +1,6 @@
 import { firebaseConfig, galleryDomain } from "./firebase-config.mjs";
 import { connect } from "./cloud.mjs";
+import { retention, memoryDay, memoryLabel, lastYearDay, validSlug } from "./memory.mjs";
 const $ = id => document.getElementById(id);
 const map = $("map");
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -11,6 +12,8 @@ const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
 const globe = [-30300, -7900, 44000, 15400];
 const lockedLayer = document.createElementNS(map.namespaceURI, "g");
+const pinLayer = document.createElementNS(map.namespaceURI, "g");
+pinLayer.classList.add("memory-pins");
 map.append(lockedLayer);
 const mapLabels = [
   ["Laut Jawa", 110.3, -5.7],
@@ -21,7 +24,17 @@ const project = (lon, lat) => [(lon - 104.8) * 83, (-4.85 - lat) * 83];
 let records = [], selected, user, cloud, uid, profile, view = overview, renderId = 0;
 let sessionId = 0;
 let viewedPhoto;
+let viewerUrl;
 let deleting = false;
+let yearFilter = "";
+let previousYear = false;
+let wallMode = false;
+let slideshow;
+let trashRecords = [];
+let slugCheck = 0;
+const filteredPhotos = () => records.filter(photo => !photo.deletedAt
+  && (!yearFilter || memoryDay(photo).startsWith(yearFilter))
+  && (!previousYear || memoryDay(photo) === lastYearDay()));
 const demo = !firebaseConfig && !publicSlug;
 const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
 const albumTrack = $("photos");
@@ -44,7 +57,7 @@ async function localPhotos(record, removeId) {
     return await new Promise((resolve, reject) => {
       const transaction = database.transaction("photos", record || removeId ? "readwrite" : "readonly");
       const store = transaction.objectStore("photos");
-      const request = removeId ? store.delete(removeId) : record ? store.add(record) : store.getAll();
+      const request = removeId ? store.delete(removeId) : record ? store.put(record) : store.getAll();
       transaction.oncomplete = () => resolve(record || request.result);
       transaction.onabort = () => reject(transaction.error);
     });
@@ -112,6 +125,7 @@ function draw(data, locked = false) {
     labels.append(label);
   }
   map.append(labels);
+  map.append(pinLayer);
   $("search").placeholder = "Contoh: Kota Bandung";
   $("search").disabled = false;
   render();
@@ -143,11 +157,16 @@ function updateAlbumNav() {
   $("photoPosition").textContent = (index + 1) + " / " + pages.length;
   $("prevPhoto").disabled = index === 0;
   $("nextPhoto").disabled = index >= pages.length - 1;
+  $("slideshow").hidden = pages.length < 2;
 }
 
 function moveAlbum(step) {
   const {pages, index} = albumPosition();
   const target = Math.min(Math.max(index + step, 0), pages.length - 1);
+  goToPhoto(target);
+}
+
+function goToPhoto(target) {
   albumTrack.scrollTo({left: target * albumTrack.clientWidth,
     behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
 }
@@ -156,23 +175,137 @@ albumTrack.addEventListener("scroll", updateAlbumNav, {passive:true});
 $("prevPhoto").onclick = () => moveAlbum(-1);
 $("nextPhoto").onclick = () => moveAlbum(1);
 
+function updateTimeline() {
+  const years = [...new Set(records.filter(photo => !photo.deletedAt).map(photo => memoryDay(photo).slice(0, 4)))].sort();
+  const year = $("year");
+  if (!years.includes(yearFilter)) yearFilter = "";
+  year.max = years.length;
+  year.value = yearFilter ? years.indexOf(yearFilter) + 1 : 0;
+  $("timeline").hidden = years.length === 0;
+  $("yearLabel").textContent = yearFilter || "Semua tahun";
+  year.setAttribute("aria-valuetext", $("yearLabel").textContent);
+  year.oninput = () => { yearFilter = years[Number(year.value) - 1] || ""; previousYear = false; render(); };
+}
+
+function showPhoto(photo, url) {
+  viewedPhoto = photo;
+  viewerUrl = url;
+  $("full").src = url;
+  $("full").alt = "Foto kenangan di " + regions.get(photo.region)?.name;
+  $("downloadPhoto").href = url;
+  $("confirmDelete").hidden = true;
+  $("deletePhoto").hidden = $("editMemory").hidden = $("makeCover").hidden = !canAdd();
+  updatePhotoInfo(photo);
+  if (!$("viewer").open) $("viewer").showModal();
+}
+
+function updatePhotoInfo(photo) {
+  $("photoRegion").textContent = regions.get(photo.region)?.name || "";
+  $("photoDate").textContent = (photo.date ? "Tanggal kenangan · " : "Diunggah · ") + memoryLabel(photo);
+  $("photoCaption").textContent = photo.caption || "";
+  $("photoPeople").textContent = photo.people || "";
+  $("memoryDate").value = photo.date || "";
+  $("memoryCaption").value = photo.caption || "";
+  $("memoryPeople").value = photo.people || "";
+  $("memoryPublic").checked = photo.visibility === "public";
+  $("memoryStatus").textContent = "";
+}
+
+async function photoUrl(photo) {
+  let blob = photo.blob;
+  if (!blob) blob = await cloud.photo(uid, photo.id);
+  return URL.createObjectURL(blob);
+}
+
+function drawPins(grouped) {
+  pinLayer.replaceChildren();
+  if (wallMode) return;
+  for (const [id, {count}] of grouped) {
+    const {path, name} = regions.get(id);
+    const [x, y] = path.__pin || (path.__pin = (() => {
+      const box = path.getBBox();
+      return [box.x + box.width / 2, box.y + box.height / 2];
+    })());
+    const pin = document.createElementNS(map.namespaceURI, "path");
+    pin.setAttribute("d", "M-5-6h10v12h-10z M-3-4h6v6h-6z");
+    pin.setAttribute("transform", "translate(" + x + " " + y + ")");
+    pin.setAttribute("fill-rule", "evenodd");
+    pin.setAttribute("aria-label", name + ", " + count + " foto");
+    pin.onclick = () => { if (!dragged) select(id); };
+    pinLayer.append(pin);
+  }
+}
+
 async function render() {
   const generation = ++renderId;
-  const activeRecords = records.filter(photo => regions.has(photo.region) && !regions.get(photo.region).locked);
-  const occupied = new Set(activeRecords.map(photo => photo.region));
-  $("colored").textContent = occupied.size;
-  $("total").textContent = activeRecords.length;
-  for (const [id, { path }] of regions) {
-    path.classList.toggle("filled", occupied.has(id));
-    path.classList.toggle("selected", id === selected);
+  updateTimeline();
+  $("lastYear").setAttribute("aria-pressed", String(previousYear));
+  $("mapMode").setAttribute("aria-pressed", String(!wallMode));
+  $("wallMode").setAttribute("aria-pressed", String(wallMode));
+  $("workspace").hidden = wallMode;
+  $("wall").hidden = !wallMode;
+  const activeRecords = filteredPhotos().filter(photo => regions.has(photo.region) && !regions.get(photo.region).locked);
+  const grouped = new Map();
+  for (const photo of activeRecords) {
+    const entry = grouped.get(photo.region) || {count: 0, latest: photo};
+    entry.count++;
+    if (memoryDay(photo) > memoryDay(entry.latest)) entry.latest = photo;
+    grouped.set(photo.region, entry);
   }
-  for (const url of photoUrls) URL.revokeObjectURL(url);
+  $("colored").textContent = grouped.size;
+  $("total").textContent = activeRecords.length;
+  const activeCount = [...regions.values()].filter(region => !region.locked).length;
+  const favorite = [...grouped].sort(([, a], [, b]) => b.count - a.count)[0];
+  const latest = activeRecords.reduce((best, photo) => !best || photo.created > best.created ? photo : best, null);
+  $("progressText").textContent = activeCount ? grouped.size + " dari " + activeCount + " daerah terisi" +
+    (favorite ? " · Terbanyak di " + regions.get(favorite[0]).name : "") +
+    (latest ? " · Terakhir diisi: " + regions.get(latest.region).name : "") : "";
+  $("regionProgress").hidden = !activeCount;
+  $("regionProgress").max = activeCount || 1;
+  $("regionProgress").value = grouped.size;
+  $("randomPhoto").disabled = activeRecords.length === 0;
+  $("trash").hidden = !canAdd();
+  for (const [id, { path, name, province, locked }] of regions) {
+    const entry = grouped.get(id);
+    const count = entry?.count || 0;
+    path.classList.toggle("filled", count > 0);
+    path.dataset.heat = count >= 6 ? "3" : count >= 3 ? "2" : count ? "1" : "0";
+    path.classList.toggle("selected", id === selected);
+    if (!locked) path.firstChild.textContent = name + ", " + province +
+      (entry ? " · " + count + " foto · terakhir " + memoryLabel(entry.latest) : "");
+  }
+  drawPins(grouped);
+  for (const url of photoUrls) if (url !== viewerUrl) URL.revokeObjectURL(url);
   photoUrls.clear();
   albumTrack.replaceChildren();
+  $("filmstrip").replaceChildren();
+  $("wall").replaceChildren();
   albumTrack.scrollLeft = 0;
   updateAlbumNav();
   const place = regions.get(selected);
   $("add").hidden = !place || place.locked || !canAdd();
+  $("dropHint").hidden = $("add").hidden;
+  if (wallMode) {
+    if (!activeRecords.length) $("wall").textContent = "Belum ada foto pada periode ini.";
+    for (const photo of [...activeRecords].sort((a, b) => memoryDay(b).localeCompare(memoryDay(a)))) {
+      try {
+        const url = await photoUrl(photo);
+        if (generation !== renderId) { URL.revokeObjectURL(url); return; }
+        photoUrls.add(url);
+        const card = document.createElement("button");
+        const image = new Image();
+        const caption = document.createElement("span");
+        image.src = url;
+        image.alt = regions.get(photo.region).name;
+        image.loading = "lazy";
+        caption.textContent = [photo.caption || image.alt, memoryLabel(photo)].join(" · ");
+        card.append(image, caption);
+        card.onclick = () => showPhoto(photo, url);
+        $("wall").append(card);
+      } catch (error) { console.error(error); }
+    }
+    return;
+  }
   $("request").hidden = !place?.locked;
   $("requestStatus").hidden = true;
   $("requestStatus").textContent = "";
@@ -191,36 +324,40 @@ async function render() {
     }
     return;
   }
-  const photos = records.filter(photo => photo.region === selected).sort((a,b) => b.created-a.created);
+  const photos = activeRecords.filter(photo => photo.region === selected)
+    .sort((a,b) => (b.coverAt || 0) - (a.coverAt || 0) || memoryDay(b).localeCompare(memoryDay(a)) || b.created-a.created);
   $("detail").textContent = place
     ? place.province + " · " + (photos.length ? photos.length + " foto" : "Belum ada foto")
     : "Klik wilayah di peta atau cari namanya untuk membuka album.";
   for (const [index, photo] of photos.entries()) {
     try {
-      const blob = photo.blob || await cloud.photo(uid, photo.id);
-      if (generation !== renderId) return;
-      const url = URL.createObjectURL(blob);
+      const url = await photoUrl(photo);
+      if (generation !== renderId) { URL.revokeObjectURL(url); return; }
       photoUrls.add(url);
       const button = document.createElement("button");
       const image = new Image();
       image.src = url;
       image.alt = "Foto kenangan di " + place.name;
       button.append(image);
+      const note = document.createElement("small");
+      note.textContent = [photo.caption, memoryLabel(photo)].filter(Boolean).join(" · ");
+      button.append(note);
       if (index === 0) {
         button.classList.add("album-cover");
         const caption = document.createElement("span");
         caption.textContent = photos.length + " foto";
         button.append(caption);
       }
-      button.onclick = () => {
-        viewedPhoto = photo;
-        $("full").src = url;
-        $("full").alt = image.alt;
-        $("confirmDelete").hidden = true;
-        $("deletePhoto").hidden = !canAdd();
-        $("viewer").showModal();
-      };
+      button.onclick = () => showPhoto(photo, url);
       albumTrack.append(button);
+      const thumb = document.createElement("button");
+      const thumbnail = new Image();
+      thumbnail.src = url;
+      thumbnail.alt = "Ke foto " + (index + 1);
+      const position = albumTrack.children.length - 1;
+      thumb.onclick = () => goToPhoto(position);
+      thumb.append(thumbnail);
+      $("filmstrip").append(thumb);
       updateAlbumNav();
     } catch {
       if (generation === renderId) $("detail").textContent = place.province + " · Sebagian foto gagal dimuat.";
@@ -242,7 +379,10 @@ $("search").oninput = () => {
     if (full.startsWith(term) || short.startsWith(term)) return 2;
     return (full + " " + province.toLowerCase()).includes(term) ? 3 : Infinity;
   };
-  const matches = [...regions].filter(([, place]) => Number.isFinite(rank(place)))
+  const memoryMatches = new Set(filteredPhotos().filter(photo =>
+    ((photo.caption || "") + " " + (photo.people || "")).toLowerCase().includes(term)
+  ).map(photo => photo.region));
+  const matches = [...regions].filter(([id, place]) => Number.isFinite(rank(place)) || memoryMatches.has(id))
     .sort(([, a], [, b]) => rank(a) - rank(b) || Number(a.locked) - Number(b.locked));
   for (const [id, place] of matches.slice(0, 12)) {
     const item = document.createElement("button");
@@ -263,6 +403,40 @@ $("plus").onclick = () => zoom(.65);
 $("minus").onclick = () => zoom(1/.65);
 $("world").onclick = () => setView(globe);
 $("reset").onclick = () => setView(overview);
+$("mapMode").onclick = () => { wallMode = false; render(); };
+$("wallMode").onclick = () => { wallMode = true; stopSlideshow(); render(); };
+$("lastYear").onclick = () => {
+  previousYear = !previousYear;
+  yearFilter = "";
+  message(previousYear ? "Kenangan pada " + lastYearDay() + "." : "");
+  render();
+};
+$("randomPhoto").onclick = async () => {
+  const options = filteredPhotos().filter(photo => regions.has(photo.region));
+  if (!options.length) return;
+  const photo = options[Math.floor(Math.random() * options.length)];
+  const generation = sessionId;
+  try {
+    const url = await photoUrl(photo);
+    if (generation !== sessionId || $("viewer").open) { URL.revokeObjectURL(url); return; }
+    showPhoto(photo, url);
+  } catch { message("Foto gagal dibuka."); }
+};
+function stopSlideshow() {
+  clearInterval(slideshow);
+  slideshow = undefined;
+  $("slideshow").textContent = "Putar slideshow";
+}
+$("slideshow").onclick = () => {
+  if (slideshow) { stopSlideshow(); return; }
+  $("slideshow").textContent = "Jeda slideshow";
+  slideshow = setInterval(() => {
+    const {pages, index} = albumPosition();
+    if (pages.length < 2 || $("viewer").open) { stopSlideshow(); return; }
+    goToPhoto((index + 1) % pages.length);
+  }, 3500);
+};
+$("mapTheme").onchange = () => { map.closest(".chart").dataset.theme = $("mapTheme").value; };
 let drag, dragged = false;
 map.addEventListener("pointerdown", event => {
   if (event.button !== 0 || !event.isPrimary) return;
@@ -295,7 +469,35 @@ async function prepare(file) {
   return image;
 }
 
+async function inspectExif(file, fallbackRegion) {
+  try {
+    const {parse} = await import("./vendor/exifr.mjs");
+    const exif = await parse(file);
+    const taken = exif?.DateTimeOriginal;
+    const date = taken instanceof Date && Number.isFinite(+taken)
+      ? [taken.getFullYear(), String(taken.getMonth() + 1).padStart(2, "0"),
+        String(taken.getDate()).padStart(2, "0")].join("-") : "";
+    const lon = exif?.longitude, lat = exif?.latitude;
+    let region = fallbackRegion;
+    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+      const [x, y] = project(lon, lat);
+      const match = [...regions].find(([, place]) => !place.locked && place.path.isPointInFill(new DOMPoint(x, y)));
+      if (match && match[0] !== fallbackRegion && confirm("Simpan foto di " + match[1].name + " sesuai lokasi foto?")) region = match[0];
+    }
+    return {region, date};
+  } catch { return {region: fallbackRegion, date: ""}; }
+}
+
 $("add").onclick = () => $("files").click();
+const albumPanel = $("region").closest("aside");
+albumPanel.ondragover = event => {
+  if (!$("add").hidden && event.dataTransfer.types.includes("Files")) event.preventDefault();
+};
+albumPanel.ondrop = event => {
+  if (!event.dataTransfer.files.length) return;
+  event.preventDefault();
+  if (!$("add").hidden) savePhotos([...event.dataTransfer.files]);
+};
 $("request").onclick = async () => {
   const id = selected;
   const place = regions.get(id);
@@ -323,26 +525,34 @@ $("request").onclick = async () => {
     status.textContent = outcome;
   }
 };
-$("files").onchange = async () => {
-  if (!canAdd() || !regions.has(selected) || regions.get(selected).locked) return;
-  const region = selected, owner = uid, generation = sessionId;
+$("files").onchange = () => {
   const files = Array.from($("files").files);
-  if (!files.length) return;
   $("files").value = "";
+  savePhotos(files);
+};
+async function savePhotos(files) {
+  if (!canAdd() || !regions.has(selected) || regions.get(selected).locked) return;
+  const destination = selected, owner = uid, generation = sessionId;
+  if (!files.length || $("add").disabled) return;
   $("add").disabled = true;
   message("Menyimpan foto…");
   let saved = 0, failures = 0;
+  const firstRegions = new Set();
   try {
     for (const file of files) {
       if (generation !== sessionId) break;
       try {
         const blob = await prepare(file);
         if (generation !== sessionId) break;
+        const {region, date} = await inspectExif(file, destination);
+        if (generation !== sessionId) break;
+        const first = !records.some(photo => photo.region === region);
         const record = demo
-          ? await localPhotos({ id: crypto.randomUUID(), region, blob, created: Date.now() })
-          : await cloud.save(owner, region, blob);
+          ? await localPhotos({ id: crypto.randomUUID(), region, blob, created: Date.now(), date })
+          : await cloud.save(owner, region, blob, date);
         if (generation !== sessionId) break;
         records.push(record);
+        if (first) firstRegions.add(regions.get(region).name);
         saved++;
       } catch (error) {
         console.error(error);
@@ -350,13 +560,15 @@ $("files").onchange = async () => {
       }
     }
     if (generation === sessionId) {
-      message(saved + " foto tersimpan." + (failures ? " " + failures + " foto gagal. Coba format lain atau pilih file di bawah 25 MB." : ""));
+      message(saved + " foto tersimpan." +
+        (firstRegions.size ? " Kenangan pertama di " + [...firstRegions].join(", ") + "." : "") +
+        (failures ? " " + failures + " foto gagal. Coba format lain atau pilih file di bawah 25 MB." : ""));
       render();
     }
   } finally {
     $("add").disabled = false;
   }
-};
+}
 
 function showLink() {
   const slug = profile?.slug;
@@ -371,10 +583,26 @@ function showLink() {
 
 function previewLink() {
   const draft = $("slug").value.trim();
-  const name = slugPattern.test(draft) && draft.length >= 3 && draft.length <= 40 ? draft : "nama-galeri";
+  const name = validSlug(draft) ? draft : "nama-galeri";
   $("linkPreview").textContent = name + "." + (galleryDomain || "domainmu.id") + (galleryDomain ? "" : " (contoh alamat)");
 }
-$("slug").oninput = previewLink;
+$("slug").oninput = async () => {
+  previewLink();
+  const generation = ++slugCheck;
+  const draft = $("slug").value.trim();
+  const valid = validSlug(draft);
+  $("slug").setCustomValidity(draft && !valid ? "Pakai 3–30 karakter dan hindari nama yang dicadangkan." : "");
+  if (!valid || !cloud || !uid) return;
+  await new Promise(resolve => setTimeout(resolve, 250));
+  if (generation !== slugCheck) return;
+  try {
+    const claimant = await cloud.gallery(draft);
+    if (generation !== slugCheck || !$("publish").open) return;
+    const taken = claimant && claimant !== uid;
+    $("shareError").textContent = taken ? "Sudah dipakai. Coba " + draft.slice(0, 25).replace(/-$/, "") + "-peta." : "Nama tersedia.";
+    $("slug").setCustomValidity(taken ? "Nama sudah dipakai." : "");
+  } catch { /* The transaction remains the final availability check. */ }
+};
 $("share").onclick = () => {
   $("shareError").textContent = demo ? "Berbagi publik memerlukan Firebase dan hosting publik. Subdomain juga memerlukan domain induk."
     : !uid ? "Masuk dengan Google untuk menerbitkan galeri."
@@ -385,9 +613,39 @@ $("share").onclick = () => {
 $("close").onclick = () => $("publish").close();
 $("closeViewer").onclick = () => { if (!deleting) $("viewer").close(); };
 $("viewer").oncancel = event => { if (deleting) event.preventDefault(); };
-$("viewer").onclose = () => { viewedPhoto = undefined; $("full").removeAttribute("src"); };
+$("viewer").onclose = () => {
+  if (viewerUrl && !photoUrls.has(viewerUrl)) URL.revokeObjectURL(viewerUrl);
+  viewedPhoto = viewerUrl = undefined;
+  $("full").removeAttribute("src");
+  $("downloadPhoto").removeAttribute("href");
+};
+async function editPhoto(changes) {
+  if (!viewedPhoto || !canAdd()) return;
+  const generation = sessionId;
+  const photo = { ...viewedPhoto, ...changes };
+  try {
+    if (demo) await localPhotos(photo);
+    else await cloud.updatePhoto(uid, photo.id, changes);
+    if (generation !== sessionId) return;
+    records = records.map(item => item.id === photo.id ? photo : item);
+    if (viewedPhoto?.id === photo.id) {
+      viewedPhoto = photo;
+      updatePhotoInfo(photo);
+      $("memoryStatus").textContent = "Tersimpan.";
+    }
+    render();
+  } catch {
+    if (viewedPhoto?.id === photo.id) $("memoryStatus").textContent = "Gagal menyimpan detail.";
+  }
+}
+$("editMemory").onsubmit = event => {
+  event.preventDefault();
+  editPhoto({date: $("memoryDate").value, caption: $("memoryCaption").value.trim(), people: $("memoryPeople").value.trim(),
+    visibility: $("memoryPublic").checked ? "public" : "private"});
+};
+$("makeCover").onclick = () => editPhoto({coverAt: Date.now()});
 $("deletePhoto").onclick = () => {
-  $("deleteStatus").textContent = "Hapus foto ini secara permanen?";
+  $("deleteStatus").textContent = "Pindahkan foto ke tong sampah? Foto dapat dipulihkan selama 30 hari.";
   $("confirmDelete").hidden = false;
   $("cancelDelete").focus();
 };
@@ -400,11 +658,14 @@ $("doDelete").onclick = async () => {
   deleting = true;
   controls.forEach(button => { button.disabled = true; });
   try {
-    const removed = demo ? (await localPhotos(undefined, id), true) : await cloud.remove(owner, id);
+    const photo = { ...viewedPhoto, deletedAt: Date.now() };
+    if (demo) await localPhotos(photo);
+    else await cloud.movePhoto(owner, id, false);
     if (generation !== sessionId) return;
     records = records.filter(photo => photo.id !== id);
+    if (demo) trashRecords.push(photo);
     $("viewer").close();
-    message(removed ? "Foto dihapus." : "Foto dihapus dari galeri. Berkas di penyimpanan belum berhasil dibersihkan.");
+    message("Foto dipindahkan ke tong sampah.");
     render();
   } catch {
     $("deleteStatus").textContent = "Foto gagal dihapus. Coba lagi.";
@@ -412,6 +673,48 @@ $("doDelete").onclick = async () => {
     deleting = false;
     controls.forEach(button => { button.disabled = false; });
   }
+};
+$("closeTrash").onclick = () => $("trashDialog").close();
+$("trash").onclick = async () => {
+  const generation = sessionId;
+  const owner = uid;
+  const list = $("trashList");
+  list.textContent = "Memuat…";
+  $("trashDialog").showModal();
+  try {
+    const deleted = (demo ? trashRecords : await cloud.trash(owner))
+      .filter(photo => photo.deletedAt > Date.now() - retention);
+    if (generation !== sessionId) return;
+    list.textContent = deleted.length ? "" : "Tong sampah kosong.";
+    for (const photo of deleted) {
+      const row = document.createElement("div");
+      const label = document.createElement("span");
+      label.textContent = [regions.get(photo.region)?.name, photo.caption || memoryLabel(photo)].filter(Boolean).join(" · ");
+      const restore = document.createElement("button");
+      restore.textContent = "Pulihkan";
+      restore.onclick = async () => {
+        restore.disabled = true;
+        try {
+          if (!canAdd() || generation !== sessionId || photo.deletedAt <= Date.now() - retention) throw new Error();
+          const {deletedAt, ...active} = photo;
+          if (demo) await localPhotos(active);
+          else await cloud.movePhoto(owner, photo.id, true);
+          if (generation !== sessionId) return;
+          trashRecords = trashRecords.filter(item => item.id !== photo.id);
+          records.push(active);
+          row.remove();
+          if (!list.children.length) list.textContent = "Tong sampah kosong.";
+          message("Foto dipulihkan.");
+          render();
+        } catch {
+          restore.textContent = "Gagal, coba lagi";
+          restore.disabled = false;
+        }
+      };
+      row.append(label, restore);
+      list.append(row);
+    }
+  } catch { list.textContent = "Tong sampah gagal dimuat."; }
 };
 $("copy").onclick = async () => {
   try {
@@ -424,6 +727,7 @@ $("copy").onclick = async () => {
 
 async function publish(next) {
   if (!uid || !cloud) return;
+  if (next && !validSlug(next)) return;
   const generation = sessionId;
   const buttons = $("publishForm").querySelectorAll("button");
   buttons.forEach(button => { button.disabled = true; });
@@ -452,6 +756,7 @@ async function loadAccount(account) {
   profile = undefined;
   records = [];
   if ($("viewer").open) $("viewer").close();
+  if ($("trashDialog").open) $("trashDialog").close();
   $("account").textContent = user ? "Keluar" : "Masuk dengan Google";
   if ($("publish").open) $("publish").close();
   render();
@@ -498,7 +803,12 @@ async function start() {
   }).catch(error => console.error(error));
   if (demo) {
     message("Mode demo · Foto disimpan di browser ini.");
-    records = await localPhotos();
+    const saved = await localPhotos();
+    records = saved.filter(photo => !photo.deletedAt);
+    trashRecords = saved.filter(photo => photo.deletedAt > Date.now() - retention);
+    for (const photo of saved) if (photo.deletedAt && photo.deletedAt <= Date.now() - retention) {
+      await localPhotos(undefined, photo.id);
+    }
     render();
     return;
   }
@@ -508,7 +818,7 @@ async function start() {
   uid = slugPattern.test(publicSlug) ? await cloud.gallery(publicSlug) : undefined;
   if (!uid) { message("Galeri ini tidak ditemukan atau sudah dijadikan privat."); return; }
   $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
-  records = await cloud.list(uid);
+  records = await cloud.list(uid, true);
   render();
 }
 

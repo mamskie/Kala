@@ -15,11 +15,19 @@
     <div class="stats"><div><strong id="colored">0</strong> <span>daerah</span></div><div><strong id="total">0</strong> <span>foto</span></div></div>
   </div>
   <p id="status" role="status"></p>
-  <div class="workspace">
+  <nav class="memory-tools" aria-label="Tampilan kenangan">
+    <button id="mapMode" type="button" aria-pressed="true">Peta</button>
+    <button id="wallMode" type="button" aria-pressed="false">Scrapbook</button>
+    <button id="lastYear" type="button" aria-pressed="false">Hari ini tahun lalu</button>
+    <button id="randomPhoto" type="button">Kenangan acak</button>
+    <button id="trash" type="button" hidden>Foto terhapus</button>
+  </nav>
+  <div class="timeline" id="timeline" hidden><label for="year">Linimasa</label><input id="year" type="range" min="0" value="0"><output id="yearLabel" for="year">Semua tahun</output></div>
+  <div class="workspace" id="workspace">
     <section class="mapcard" aria-label="Peta dunia">
-      <div class="search"><label for="search">Cari daerah atau negara</label><input id="search" type="search" autocomplete="off" placeholder="Memuat peta…" disabled><div id="results"></div></div>
+      <div class="search"><label for="search">Cari daerah, caption, atau nama orang</label><input id="search" type="search" autocomplete="off" placeholder="Memuat peta…" disabled><div id="results"></div></div>
       <div class="chart"><svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg></div>
-      <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span>Ada foto</span><span>Terkunci</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="world">Dunia</button><button id="reset">Jawa</button></div></div>
+      <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span class="heat-key">1–2 / 3–5 / 6+ foto</span><span>Terkunci</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="world">Dunia</button><button id="reset">Jawa</button><select id="mapTheme" aria-label="Tema peta"><option value="">Gelap</option><option value="light">Terang</option><option value="sepia">Sepia</option></select></div></div>
     </section>
     <aside aria-label="Album daerah">
       <p class="album-label">Album daerah</p>
@@ -27,6 +35,7 @@
       <button id="request" hidden>Ajukan wilayah</button>
       <p id="requestStatus" role="status" hidden></p>
       <button id="add" class="primary" hidden>+ Tambah foto</button>
+      <p id="dropHint" hidden>Atau jatuhkan foto di album ini.</p>
       <input id="files" type="file" multiple accept="image/*" hidden>
       <div id="photos" aria-label="Foto album"></div>
       <div id="albumNav" class="album-nav" hidden>
@@ -34,11 +43,16 @@
         <span id="photoPosition" aria-live="polite"></span>
         <button id="nextPhoto" type="button" aria-label="Foto berikutnya">›</button>
       </div>
+      <div id="filmstrip" aria-label="Thumbnail album"></div>
+      <button id="slideshow" type="button" hidden>Putar slideshow</button>
     </aside>
   </div>
+  <section id="wall" aria-label="Scrapbook foto" hidden></section>
+  <div class="memory-progress"><progress id="regionProgress" aria-label="Kemajuan wilayah terisi" hidden></progress><p id="progressText"></p></div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
 </main>
-<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat peta dan fotonya.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
-<dialog id="viewer"><div class="actions"><button id="closeViewer" autofocus>Tutup</button><button id="deletePhoto" class="danger" hidden>Hapus foto</button></div><img id="full" alt=""><div id="confirmDelete" hidden><p id="deleteStatus" role="status">Hapus foto ini secara permanen?</p><div class="actions"><button id="cancelDelete">Batal</button><button id="doDelete" class="danger">Ya, hapus foto</button></div></div></dialog>
+<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat foto yang kamu tandai untuk galeri publik.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="30" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
+<dialog id="viewer"><div class="actions"><button id="closeViewer" autofocus>Tutup</button><a id="downloadPhoto" download="kenangan">Unduh foto</a><button id="makeCover" type="button" hidden>Jadikan sampul</button><button id="deletePhoto" class="danger" hidden>Hapus foto</button></div><div class="viewer-body"><img id="full" alt=""><div class="photo-info"><h2 id="photoRegion"></h2><p id="photoDate"></p><p id="photoCaption"></p><p id="photoPeople"></p><form id="editMemory" hidden><label for="memoryDate">Tanggal kenangan</label><input id="memoryDate" type="date"><label for="memoryCaption">Caption</label><textarea id="memoryCaption" maxlength="240" rows="3"></textarea><label for="memoryPeople">Nama orang</label><input id="memoryPeople" maxlength="120"><label class="visibility"><input id="memoryPublic" type="checkbox"> Tampilkan di galeri publik</label><button type="submit">Simpan detail</button></form><p id="memoryStatus" role="status"></p></div></div><div id="confirmDelete" hidden><p id="deleteStatus" role="status">Pindahkan foto ke tong sampah? Foto dapat dipulihkan selama 30 hari.</p><div class="actions"><button id="cancelDelete">Batal</button><button id="doDelete" class="danger">Pindahkan foto</button></div></div></dialog>
+<dialog id="trashDialog"><div class="actions"><h2>Foto terhapus</h2><button id="closeTrash">Tutup</button></div><p>Foto dapat dipulihkan selama 30 hari.</p><div id="trashList"></div></dialog>
 <script type="module" src="/app.mjs"></script>
 </html>

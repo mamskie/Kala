@@ -7,6 +7,7 @@ service firebase.storage {
       }
       allow get: if owner() || (
         firestore.exists(/databases/(default)/documents/profiles/$(uid)/photos/$(photo))
+        && firestore.get(/databases/(default)/documents/profiles/$(uid)/photos/$(photo)).data.visibility == 'public'
         && firestore.get(/databases/(default)/documents/profiles/$(uid)).data.slug is string
       );
       allow create: if owner() && request.resource.size <= 5 * 1024 * 1024
