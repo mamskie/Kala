@@ -6,8 +6,19 @@ const map = $("map");
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const hostSlug = galleryDomain && location.hostname.endsWith("." + galleryDomain)
   ? location.hostname.slice(0, -(galleryDomain.length + 1)) : "";
-const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri");
-document.documentElement.classList.toggle("visitor", Boolean(publicSlug));
+const params = new URLSearchParams(location.search);
+const mapOnly = params.get("peta") === "1";
+const publicSlug = mapOnly ? "" : hostSlug || params.get("galeri");
+const mapFragment = location.hash.slice(1);
+let sharedRegions = new Set();
+if (mapOnly && mapFragment.length <= 16000) {
+  try {
+    const values = JSON.parse(decodeURIComponent(mapFragment));
+    if (Array.isArray(values)) sharedRegions = new Set(values.filter(id => typeof id === "string").slice(0, 119));
+  } catch { /* Invalid or empty links open the map without marked regions. */ }
+}
+document.documentElement.classList.toggle("visitor", Boolean(publicSlug) || mapOnly);
+document.documentElement.classList.toggle("map-only", mapOnly);
 const regions = new Map();
 const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
@@ -38,7 +49,7 @@ let slugCheck = 0;
 const filteredPhotos = () => records.filter(photo => !photo.deletedAt
   && (!yearFilter || memoryDay(photo).startsWith(yearFilter))
   && (!previousYear || memoryDay(photo) === lastYearDay()));
-const demo = !firebaseConfig && !publicSlug;
+const demo = !firebaseConfig && !publicSlug && !mapOnly;
 const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
 const albumTrack = $("photos");
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
@@ -146,14 +157,14 @@ function select(id, focus = false) {
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
   render();
-  if (changed && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (changed && !mapOnly && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const panel = $("region").closest("aside");
     panel.getAnimations().forEach(animation => animation.cancel());
     panel.animate([{opacity:.6, transform:"translateY(8px)"}, {opacity:1, transform:"translateY(0)"}],
       {duration:280, easing:"cubic-bezier(.2,.8,.2,1)"});
     regions.get(id).path.animate([{strokeWidth:4}, {strokeWidth:1.55}], {duration:420, easing:"ease-out"});
   }
-  if (matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
+  if (!mapOnly && matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
 }
 
 function albumPosition() {
@@ -249,6 +260,18 @@ function drawPins(grouped) {
 
 async function render() {
   const generation = ++renderId;
+  if (mapOnly) {
+    for (const [id, {path, locked}] of regions) {
+      const marked = !locked && sharedRegions.has(id);
+      path.classList.toggle("filled", marked);
+      path.dataset.heat = marked ? "1" : "0";
+      path.classList.toggle("selected", id === selected);
+    }
+    const place = regions.get(selected);
+    $("mapSelection").hidden = !place;
+    $("mapSelection").textContent = place ? [place.name, place.province].filter(Boolean).join(" · ") : "";
+    return;
+  }
   updateTimeline();
   $("lastYear").setAttribute("aria-pressed", String(previousYear));
   $("mapMode").setAttribute("aria-pressed", String(!wallMode && !recapMode));
@@ -638,11 +661,28 @@ $("slug").oninput = async () => {
   } catch { /* The transaction remains the final availability check. */ }
 };
 $("share").onclick = () => {
+  const marked = [...new Set(filteredPhotos().map(photo => photo.region))]
+    .filter(id => regions.has(id) && !regions.get(id).locked);
+  const link = new URL("/", location.origin);
+  link.searchParams.set("peta", "1");
+  link.hash = encodeURIComponent(JSON.stringify(marked));
+  $("mapShareLink").value = link.href;
+  $("previewMap").href = link.href;
+  $("mapShareStatus").textContent = "Tautan menyimpan wilayah yang ditandai. Akses mengikuti izin situs.";
   $("shareError").textContent = demo ? "Berbagi publik memerlukan Firebase dan hosting publik. Subdomain juga memerlukan domain induk."
     : !uid ? "Masuk dengan Google untuk menerbitkan galeri."
     : !galleryDomain ? "Tautan biasa tersedia. Subdomain menunggu konfigurasi domain induk." : "";
   showLink();
   $("publish").showModal();
+};
+$("copyMap").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("mapShareLink").value);
+    $("mapShareStatus").textContent = "Tautan peta disalin.";
+  } catch {
+    $("mapShareLink").select();
+    $("mapShareStatus").textContent = "Salin alamat yang dipilih.";
+  }
 };
 $("close").onclick = () => $("publish").close();
 $("closeViewer").onclick = () => { if (!deleting) $("viewer").close(); };
@@ -819,8 +859,13 @@ $("account").onclick = async () => {
 };
 
 async function start() {
-  $("account").hidden = Boolean(publicSlug);
-  $("share").hidden = Boolean(publicSlug);
+  $("account").hidden = Boolean(publicSlug) || mapOnly;
+  $("share").hidden = Boolean(publicSlug) || mapOnly;
+  if (mapOnly) {
+    $("title").textContent = "Peta kenangan";
+    $("galleryIntro").textContent = "Jelajahi wilayah yang ditandai di Kala.";
+    $("search").previousElementSibling.textContent = "Cari daerah atau negara";
+  }
   if (publicSlug) {
     $("galleryIntro").textContent = "Jelajahi tempat dan foto yang dibagikan di galeri ini.";
     if (slugPattern.test(publicSlug)) $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
@@ -839,6 +884,7 @@ async function start() {
     draw(data, true);
     if ($("search").value) $("search").oninput();
   }).catch(error => console.error(error));
+  if (mapOnly) return;
   if (demo) {
     message("Mode demo · Foto disimpan di browser ini.");
     const saved = await localPhotos();

@@ -2,18 +2,20 @@
 <html lang="id">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Simpan foto berdasarkan kabupaten dan kota di peta Jawa.">
-<title>Atlas Kenangan</title>
+<meta name="description" content="Kala adalah jurnal foto berbasis peta. Simpan kenangan menurut tempat dan waktu, lihat kembali lewat recap tahunan, dan bagikan peta atau galeri pilihanmu.">
+<meta property="og:title" content="Kala">
+<meta property="og:description" content="Simpan kenangan menurut tempat dan waktu. Buka kembali lewat peta, scrapbook, dan recap tahunan.">
+<title>Kala</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/atlas.css">
 <link rel="stylesheet" href="/electric.css">
 <header>
-  <a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i> Atlas Kenangan</a>
+  <a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i> Kala</a>
   <div class="actions"><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
 </header>
 <main>
   <div class="intro"><div class="time-dial" aria-hidden="true"><i></i></div>
-    <div><h1 id="title">Peta kenangan<span aria-hidden="true">.</span></h1><p id="galleryIntro">Pilih tempat. Buka kenangannya.</p></div>
+    <div><h1 id="title">Kala<span aria-hidden="true">.</span></h1><p id="galleryIntro">Simpan foto menurut tempat dan waktu. Buka kembali lewat peta atau recap tahunan.</p></div>
     <div class="stats"><div><strong id="colored">0</strong> <span>daerah</span></div><div><strong id="total">0</strong> <span>foto</span></div></div>
   </div>
   <p id="status" role="status"></p>
@@ -30,6 +32,7 @@
     <section class="mapcard" aria-label="Peta dunia">
       <div class="search"><label for="search">Cari daerah, caption, atau nama orang</label><input id="search" type="search" autocomplete="off" placeholder="Memuat peta…" disabled><div id="results"></div></div>
       <div class="chart"><svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg><span class="map-compass" aria-hidden="true">N<i></i></span></div>
+      <p id="mapSelection" class="map-selection" role="status" hidden></p>
       <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span class="heat-key">1–2 / 3–5 / 6+ foto</span><span>Terkunci</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="world">Dunia</button><button id="reset">Indonesia</button><select id="mapTheme" aria-label="Tema peta"><option value="">Gelap</option><option value="light">Terang</option><option value="sepia">Sepia</option></select></div></div>
     </section>
     <aside aria-label="Album daerah">
@@ -59,7 +62,7 @@
   <div class="memory-progress"><progress id="regionProgress" aria-label="Kemajuan wilayah terisi" hidden></progress><p id="progressText"></p></div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
 </main>
-<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat foto yang kamu tandai untuk galeri publik.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="30" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
+<dialog id="publish"><form id="publishForm"><h2>Bagikan dari Kala</h2><section class="map-share"><h3>Peta saja</h3><p>Bagikan wilayah yang ditandai pada peta saat ini.</p><input id="mapShareLink" aria-label="Tautan peta saja" readonly><div class="actions"><button type="button" id="copyMap">Salin tautan peta</button><a id="previewMap" target="_blank" rel="noopener">Lihat peta</a></div><p id="mapShareStatus" role="status"></p></section><h3>Galeri dengan foto</h3><p>Pengunjung dapat membuka foto yang kamu tandai untuk galeri publik.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="30" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
 <dialog id="viewer"><div class="actions"><button id="closeViewer" autofocus>Tutup</button><a id="downloadPhoto" download="kenangan">Unduh foto</a><button id="makeCover" type="button" hidden>Jadikan sampul</button><button id="deletePhoto" class="danger" hidden>Hapus foto</button></div><div class="viewer-body"><img id="full" alt=""><div class="photo-info"><h2 id="photoRegion"></h2><p id="photoDate"></p><p id="photoCaption"></p><p id="photoPeople"></p><form id="editMemory" hidden><label for="memoryDate">Tanggal kenangan</label><input id="memoryDate" type="date"><label for="memoryCaption">Caption</label><textarea id="memoryCaption" maxlength="240" rows="3"></textarea><label for="memoryPeople">Nama orang</label><input id="memoryPeople" maxlength="120"><label class="visibility"><input id="memoryPublic" type="checkbox"> Tampilkan di galeri publik</label><button type="submit">Simpan detail</button></form><p id="memoryStatus" role="status"></p></div></div><div id="confirmDelete" hidden><p id="deleteStatus" role="status">Pindahkan foto ke tong sampah? Foto dapat dipulihkan selama 30 hari.</p><div class="actions"><button id="cancelDelete">Batal</button><button id="doDelete" class="danger">Pindahkan foto</button></div></div></dialog>
 <dialog id="trashDialog"><div class="actions"><h2>Foto terhapus</h2><button id="closeTrash">Tutup</button></div><p>Foto dapat dipulihkan selama 30 hari.</p><div id="trashList"></div></dialog>
 <script type="module" src="/app.mjs"></script>
