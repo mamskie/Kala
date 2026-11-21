@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /memories/{uid}/{photo} {
+      function owner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      allow get: if owner() || (
+        firestore.exists(/databases/(default)/documents/profiles/$(uid)/photos/$(photo))
+        && firestore.get(/databases/(default)/documents/profiles/$(uid)).data.slug is string
+      );
+      allow create: if owner() && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(webp|png)');
+      allow delete: if owner() &&
+        !firestore.exists(/databases/(default)/documents/profiles/$(uid)/photos/$(photo));
+    }
+  }
+}
+

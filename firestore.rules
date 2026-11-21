@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function shared(uid) {
+      return exists(/databases/$(database)/documents/profiles/$(uid))
+        && get(/databases/$(database)/documents/profiles/$(uid)).data.slug is string;
+    }
+    function validSlug(slug) {
+      return slug is string && slug.size() >= 3 && slug.size() <= 40
+        && slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$');
+    }
+    match /profiles/{uid} {
+      allow get: if owner(uid);
+      allow create, update: if owner(uid)
+        && request.resource.data.keys().hasOnly(['slug'])
+        && (request.resource.data.slug == null ||
+          (validSlug(request.resource.data.slug)
+          && getAfter(/databases/$(database)/documents/galleries/$(request.resource.data.slug)).data.uid == uid))
+        && (resource == null || resource.data.slug == null ||
+          resource.data.slug == request.resource.data.slug ||
+          !existsAfter(/databases/$(database)/documents/galleries/$(resource.data.slug)));
+      match /photos/{photo} {
+        allow read: if owner(uid) || shared(uid);
+        allow create: if owner(uid)
+          && request.resource.data.keys().hasOnly(['region','created'])
+          && request.resource.data.region is string && request.resource.data.region.size() <= 160
+          && request.resource.data.created is int;
+      }
+    }
+    match /galleries/{slug} {
+      allow get: if true;
+      allow create, update: if validSlug(slug)
+        && owner(request.resource.data.uid)
+        && (resource == null || resource.data.uid == request.auth.uid)
+        && request.resource.data.keys().hasOnly(['uid'])
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.slug == slug;
+      allow delete: if owner(resource.data.uid)
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.slug != slug;
+    }
+  }
+}
+
