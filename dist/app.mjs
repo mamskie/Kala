@@ -134,6 +134,7 @@ function draw(data, locked = false) {
 }
 
 function select(id, focus = false) {
+  const changed = selected !== id;
   selected = id;
   $("search").value = "";
   $("results").replaceChildren();
@@ -144,6 +145,13 @@ function select(id, focus = false) {
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
   render();
+  if (changed && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const panel = $("region").closest("aside");
+    panel.getAnimations().forEach(animation => animation.cancel());
+    panel.animate([{opacity:.6, transform:"translateY(8px)"}, {opacity:1, transform:"translateY(0)"}],
+      {duration:280, easing:"cubic-bezier(.2,.8,.2,1)"});
+    regions.get(id).path.animate([{strokeWidth:4}, {strokeWidth:1.55}], {duration:420, easing:"ease-out"});
+  }
   if (matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
 }
 

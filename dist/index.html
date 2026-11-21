@@ -6,13 +6,14 @@
 <title>Atlas Kenangan</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/atlas.css">
+<link rel="stylesheet" href="/electric.css">
 <header>
   <a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i> Atlas Kenangan</a>
   <div class="actions"><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
 </header>
 <main>
   <div class="intro">
-    <div><h1 id="title">Peta kenangan</h1><p id="galleryIntro">Temukan kembali kenanganmu, satu tempat demi satu.</p></div>
+    <div><h1 id="title">Peta kenangan<span aria-hidden="true">.</span></h1><p id="galleryIntro">Pilih tempat. Buka kenangannya.</p></div>
     <div class="stats"><div><strong id="colored">0</strong> <span>daerah</span></div><div><strong id="total">0</strong> <span>foto</span></div></div>
   </div>
   <p id="status" role="status"></p>
@@ -28,7 +29,7 @@
   <div class="workspace" id="workspace">
     <section class="mapcard" aria-label="Peta dunia">
       <div class="search"><label for="search">Cari daerah, caption, atau nama orang</label><input id="search" type="search" autocomplete="off" placeholder="Memuat peta…" disabled><div id="results"></div></div>
-      <div class="chart"><svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg></div>
+      <div class="chart"><svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg><span class="map-compass" aria-hidden="true">N<i></i></span></div>
       <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span class="heat-key">1–2 / 3–5 / 6+ foto</span><span>Terkunci</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="world">Dunia</button><button id="reset">Jawa</button><select id="mapTheme" aria-label="Tema peta"><option value="">Gelap</option><option value="light">Terang</option><option value="sepia">Sepia</option></select></div></div>
     </section>
     <aside aria-label="Album daerah">
