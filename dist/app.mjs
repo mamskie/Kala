@@ -24,6 +24,7 @@ let viewedPhoto;
 let deleting = false;
 const demo = !firebaseConfig && !publicSlug;
 const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
+const albumTrack = $("photos");
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
 const message = text => { $("status").textContent = text; };
 const canAdd = () => demo || Boolean(user && uid === user.uid && !publicSlug);
@@ -130,6 +131,31 @@ function select(id, focus = false) {
   if (matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
 }
 
+function albumPosition() {
+  const pages = [...albumTrack.children];
+  const index = Math.max(0, Math.round(albumTrack.scrollLeft / (albumTrack.clientWidth || 1)));
+  return { pages, index: Math.min(index, Math.max(0, pages.length - 1)) };
+}
+
+function updateAlbumNav() {
+  const {pages, index} = albumPosition();
+  $("albumNav").hidden = pages.length < 2;
+  $("photoPosition").textContent = (index + 1) + " / " + pages.length;
+  $("prevPhoto").disabled = index === 0;
+  $("nextPhoto").disabled = index >= pages.length - 1;
+}
+
+function moveAlbum(step) {
+  const {pages, index} = albumPosition();
+  const target = Math.min(Math.max(index + step, 0), pages.length - 1);
+  albumTrack.scrollTo({left: target * albumTrack.clientWidth,
+    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
+}
+
+albumTrack.addEventListener("scroll", updateAlbumNav, {passive:true});
+$("prevPhoto").onclick = () => moveAlbum(-1);
+$("nextPhoto").onclick = () => moveAlbum(1);
+
 async function render() {
   const generation = ++renderId;
   const activeRecords = records.filter(photo => regions.has(photo.region) && !regions.get(photo.region).locked);
@@ -142,7 +168,9 @@ async function render() {
   }
   for (const url of photoUrls) URL.revokeObjectURL(url);
   photoUrls.clear();
-  $("photos").replaceChildren();
+  albumTrack.replaceChildren();
+  albumTrack.scrollLeft = 0;
+  updateAlbumNav();
   const place = regions.get(selected);
   $("add").hidden = !place || place.locked || !canAdd();
   $("request").hidden = !place?.locked;
@@ -192,7 +220,8 @@ async function render() {
         $("deletePhoto").hidden = !canAdd();
         $("viewer").showModal();
       };
-      $("photos").append(button);
+      albumTrack.append(button);
+      updateAlbumNav();
     } catch {
       if (generation === renderId) $("detail").textContent = place.province + " · Sebagian foto gagal dimuat.";
     }

@@ -28,7 +28,12 @@
       <p id="requestStatus" role="status" hidden></p>
       <button id="add" class="primary" hidden>+ Tambah foto</button>
       <input id="files" type="file" multiple accept="image/*" hidden>
-      <div id="photos"></div>
+      <div id="photos" aria-label="Foto album"></div>
+      <div id="albumNav" class="album-nav" hidden>
+        <button id="prevPhoto" type="button" aria-label="Foto sebelumnya">‹</button>
+        <span id="photoPosition" aria-live="polite"></span>
+        <button id="nextPhoto" type="button" aria-label="Foto berikutnya">›</button>
+      </div>
     </aside>
   </div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
