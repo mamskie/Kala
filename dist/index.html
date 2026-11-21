@@ -2,7 +2,7 @@
 <html lang="id">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Simpan foto berdasarkan kabupaten dan kota di peta Indonesia.">
+<meta name="description" content="Simpan foto berdasarkan kabupaten dan kota di peta Jawa.">
 <title>Atlas Kenangan</title>
 <link rel="stylesheet" href="/style.css">
 <header>
@@ -11,14 +11,14 @@
 </header>
 <main>
   <div class="intro">
-    <div><p class="eyebrow">GALERI PETA INDONESIA</p><h1 id="title">Peta Kenanganku</h1><p>Pilih kabupaten atau kota. Tambahkan foto untuk mewarnai daerahnya.</p></div>
+    <div><p class="eyebrow">GALERI PETA JAWA</p><h1 id="title">Peta Kenanganku</h1><p>Pilih kabupaten atau kota di Jawa. Tambahkan foto untuk mewarnai daerahnya.</p></div>
     <div class="stats"><div><strong id="colored">0</strong><span>Daerah berwarna</span></div><div><strong id="total">0</strong><span>Foto tersimpan</span></div></div>
   </div>
   <p id="status" role="status"></p>
   <div class="workspace">
-    <section class="mapcard" aria-label="Peta Indonesia">
+    <section class="mapcard" aria-label="Peta Jawa">
       <div class="search"><label for="search">Cari kabupaten atau kota</label><input id="search" type="search" autocomplete="off" placeholder="Contoh: Kota Bandung"><div id="results"></div></div>
-      <div class="chart"><svg id="map" role="group" aria-label="Peta interaktif kabupaten dan kota" viewBox="0 0 1000 390"></svg></div>
+      <div class="chart"><svg id="map" role="group" aria-label="Peta interaktif kabupaten dan kota di Jawa" viewBox="0 0 1000 350"></svg></div>
       <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span>Ada foto</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="reset">Atur ulang</button></div></div>
     </section>
     <aside aria-label="Album daerah">
@@ -29,7 +29,8 @@
       <div id="photos"></div>
     </aside>
   </div>
-  <footer>Batas wilayah disederhanakan · <a href="https://github.com/feiferry/indonesia_geojson">Sumber peta</a></footer>
+  <section class="availability" aria-label="Cakupan peta"><span>Di luar Jawa</span><strong>Segera hadir</strong></section>
+  <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">Sumber GeoJSON</a></footer>
 </main>
 <dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan dapat melihat peta dan foto kamu.</p><label for="slug">Nama galeri di tautan</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="contoh: jalan-jalan-ani"><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button class="primary">Terbitkan</button></div></form></dialog>
 <dialog id="viewer"><button id="closeViewer" autofocus>Tutup</button><img id="full" alt=""></dialog>

@@ -1,6 +1,6 @@
 # Atlas Kenangan
 
-Galeri foto di atas peta Indonesia. Tanpa konfigurasi Firebase, foto mode demo disimpan di IndexedDB di browser yang sama.
+Galeri foto di atas peta Jawa dan pulau-pulau yang termasuk wilayah administratifnya, termasuk Madura. Tanpa konfigurasi Firebase, foto mode demo disimpan di IndexedDB di browser yang sama.
 
 ## Sambungkan Firebase
 
@@ -16,5 +16,7 @@ Tanpa domain induk, tombol bagikan menghasilkan `/?galeri=nama`. Untuk `nama.atl
 
 ## Data peta
 
-Dataset batas administrasi yang disederhanakan berasal dari https://github.com/feiferry/indonesia_geojson. Label mengikuti dataset tersebut.
+Data mencakup 119 kabupaten dan kota di Banten, Jakarta, Jawa Barat, Jawa Tengah, DI Yogyakarta, dan Jawa Timur. Data berasal dari [KPU OSM Boundaries, versi 2026-10-10b](https://github.com/ahsa29/kpu-osm-boundaries-2026), berdasarkan OpenStreetMap. Geometri disederhanakan dengan Mapshaper menggunakan interval 35 meter. ID album Jawa dari versi sebelumnya dipertahankan.
+
+© OpenStreetMap contributors. Data turunan tersedia sebagai `dist/regions.json` dengan [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
 

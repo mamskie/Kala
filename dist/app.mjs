@@ -8,13 +8,13 @@ const hostSlug = galleryDomain && location.hostname.endsWith("." + galleryDomain
 const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri");
 const regions = new Map();
 const photoUrls = new Set();
-const overview = [0, 0, 1000, 390];
+const overview = [0, 0, 1000, 350];
 const mapLabels = [
-  ["Sumatra", 101, 2.1], ["Kalimantan", 114.1, .6], ["Jawa", 110, -8.9],
-  ["Sulawesi", 122.6, .8], ["Maluku", 128.2, -3.2], ["Papua", 138.9, -4.2],
-  ["Nusa Tenggara", 119.3, -11.5],
+  ["Laut Jawa", 110.3, -5.7],
+  ["Madura", 113.5, -6.65],
+  ["Samudra Hindia", 108.5, -8.55],
 ];
-const project = (lon, lat) => [(lon - 94) * 20.7, (6.7 - lat) * 20.7];
+const project = (lon, lat) => [(lon - 104.8) * 83, (-4.85 - lat) * 83];
 let records = [], selected, user, cloud, uid, profile, view = overview, renderId = 0;
 let sessionId = 0;
 const demo = !firebaseConfig && !publicSlug;
@@ -109,7 +109,7 @@ function select(id, focus = false) {
   if (focus) {
     const box = regions.get(id).path.getBBox();
     const width = Math.min(1000, Math.max(28, box.width * 2.4, box.height * 5));
-    const height = width * .39;
+    const height = width * overview[3] / overview[2];
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
   render();
@@ -118,9 +118,10 @@ function select(id, focus = false) {
 
 async function render() {
   const generation = ++renderId;
-  const occupied = new Set(records.map(photo => photo.region));
+  const activeRecords = records.filter(photo => regions.has(photo.region));
+  const occupied = new Set(activeRecords.map(photo => photo.region));
   $("colored").textContent = occupied.size;
-  $("total").textContent = records.length;
+  $("total").textContent = activeRecords.length;
   for (const [id, { path }] of regions) {
     path.classList.toggle("filled", occupied.has(id));
     path.classList.toggle("selected", id === selected);
@@ -165,15 +166,24 @@ $("search").oninput = () => {
   const list = $("results");
   list.replaceChildren();
   if (!query) return;
-  for (const [id, place] of [...regions].filter(([, p]) =>
-    (p.name + " " + p.province).toLowerCase().includes(query.replace(/^(kabupaten|kab\.?)\s+/, ""))
-  ).slice(0, 12)) {
+  const term = query.replace(/^kab\.?\s+/, "kabupaten ");
+  const rank = ({name, province}) => {
+    const full = name.toLowerCase();
+    const short = full.replace(/^(kabupaten|kota) /, "");
+    if (full === term) return 0;
+    if (short === term) return 1;
+    if (full.startsWith(term) || short.startsWith(term)) return 2;
+    return (full + " " + province.toLowerCase()).includes(term) ? 3 : Infinity;
+  };
+  const matches = [...regions].filter(([, place]) => Number.isFinite(rank(place)))
+    .sort(([, a], [, b]) => rank(a) - rank(b));
+  for (const [id, place] of matches.slice(0, 12)) {
     const item = document.createElement("button");
     item.textContent = place.name + " · " + place.province;
     item.onclick = () => select(id, true);
     list.append(item);
   }
-  if (!list.children.length) list.textContent = "Daerah tidak ditemukan.";
+  if (!list.children.length) list.textContent = "Daerah belum tersedia di peta Jawa.";
 };
 $("search").onkeydown = event => {
   if (event.key === "Enter") $("results").querySelector("button")?.click();
