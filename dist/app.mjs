@@ -29,6 +29,7 @@ let deleting = false;
 let yearFilter = "";
 let previousYear = false;
 let wallMode = false;
+let recapMode = false;
 let slideshow;
 let trashRecords = [];
 let slugCheck = 0;
@@ -219,7 +220,7 @@ async function photoUrl(photo) {
 
 function drawPins(grouped) {
   pinLayer.replaceChildren();
-  if (wallMode) return;
+  if (wallMode || recapMode) return;
   for (const [id, {count}] of grouped) {
     const {path, name} = regions.get(id);
     const [x, y] = path.__pin || (path.__pin = (() => {
@@ -240,10 +241,14 @@ async function render() {
   const generation = ++renderId;
   updateTimeline();
   $("lastYear").setAttribute("aria-pressed", String(previousYear));
-  $("mapMode").setAttribute("aria-pressed", String(!wallMode));
+  $("mapMode").setAttribute("aria-pressed", String(!wallMode && !recapMode));
   $("wallMode").setAttribute("aria-pressed", String(wallMode));
-  $("workspace").hidden = wallMode;
-  $("wall").hidden = !wallMode;
+  $("recapMode").setAttribute("aria-pressed", String(recapMode));
+  $("workspace").hidden = wallMode || recapMode;
+  $("wall").hidden = !wallMode && !recapMode;
+  $("wall").classList.toggle("recap-board", recapMode);
+  $("wall").setAttribute("aria-label", recapMode ? "Papan Polaroid recap" : "Scrapbook foto");
+  $("recapSummary").hidden = !recapMode;
   const activeRecords = filteredPhotos().filter(photo => regions.has(photo.region) && !regions.get(photo.region).locked);
   const grouped = new Map();
   for (const photo of activeRecords) {
@@ -256,6 +261,13 @@ async function render() {
   $("total").textContent = activeRecords.length;
   const activeCount = [...regions.values()].filter(region => !region.locked).length;
   const favorite = [...grouped].sort(([, a], [, b]) => b.count - a.count)[0];
+  if (recapMode) {
+    $("recapTitle").textContent = yearFilter ? "Kenangan " + yearFilter : "Recap kenangan";
+    $("recapDetails").textContent = activeRecords.length
+      ? activeRecords.length + " foto di " + grouped.size + " daerah" +
+        (favorite ? " · Terbanyak di " + regions.get(favorite[0]).name : "")
+      : "Tambahkan foto di peta untuk mengisi papan kenanganmu.";
+  }
   const latest = activeRecords.reduce((best, photo) => !best || photo.created > best.created ? photo : best, null);
   $("progressText").textContent = activeCount ? grouped.size + " dari " + activeCount + " daerah terisi" +
     (favorite ? " · Terbanyak di " + regions.get(favorite[0]).name : "") +
@@ -285,8 +297,8 @@ async function render() {
   const place = regions.get(selected);
   $("add").hidden = !place || place.locked || !canAdd();
   $("dropHint").hidden = $("add").hidden;
-  if (wallMode) {
-    if (!activeRecords.length) $("wall").textContent = "Belum ada foto pada periode ini.";
+  if (wallMode || recapMode) {
+    if (!activeRecords.length) $("wall").textContent = recapMode ? "Papan kenangan masih kosong." : "Belum ada foto pada periode ini.";
     for (const photo of [...activeRecords].sort((a, b) => memoryDay(b).localeCompare(memoryDay(a)))) {
       try {
         const url = await photoUrl(photo);
@@ -298,8 +310,11 @@ async function render() {
         image.src = url;
         image.alt = regions.get(photo.region).name;
         image.loading = "lazy";
-        caption.textContent = [photo.caption || image.alt, memoryLabel(photo)].join(" · ");
+        caption.textContent = photo.caption || image.alt;
         card.append(image, caption);
+        const date = document.createElement("small");
+        date.textContent = [recapMode && photo.caption ? image.alt : "", memoryLabel(photo)].filter(Boolean).join(" · ");
+        card.append(date);
         card.onclick = () => showPhoto(photo, url);
         $("wall").append(card);
       } catch (error) { console.error(error); }
@@ -403,8 +418,16 @@ $("plus").onclick = () => zoom(.65);
 $("minus").onclick = () => zoom(1/.65);
 $("world").onclick = () => setView(globe);
 $("reset").onclick = () => setView(overview);
-$("mapMode").onclick = () => { wallMode = false; render(); };
-$("wallMode").onclick = () => { wallMode = true; stopSlideshow(); render(); };
+$("mapMode").onclick = () => { wallMode = recapMode = false; render(); };
+$("wallMode").onclick = () => { recapMode = false; wallMode = true; stopSlideshow(); render(); };
+$("recapMode").onclick = () => {
+  wallMode = previousYear = false;
+  recapMode = true;
+  if (!yearFilter) yearFilter = records.filter(photo => !photo.deletedAt)
+    .map(photo => memoryDay(photo).slice(0, 4)).sort().at(-1) || "";
+  stopSlideshow();
+  render();
+};
 $("lastYear").onclick = () => {
   previousYear = !previousYear;
   yearFilter = "";
@@ -826,5 +849,3 @@ start().catch(error => {
   console.error(error);
   message("Galeri gagal dimuat. Coba muat ulang halaman.");
 });
-
-

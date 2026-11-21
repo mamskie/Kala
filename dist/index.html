@@ -18,6 +18,7 @@
   <nav class="memory-tools" aria-label="Tampilan kenangan">
     <button id="mapMode" type="button" aria-pressed="true">Peta</button>
     <button id="wallMode" type="button" aria-pressed="false">Scrapbook</button>
+    <button id="recapMode" type="button" aria-pressed="false">Recap tahunan</button>
     <button id="lastYear" type="button" aria-pressed="false">Hari ini tahun lalu</button>
     <button id="randomPhoto" type="button">Kenangan acak</button>
     <button id="trash" type="button" hidden>Foto terhapus</button>
@@ -47,6 +48,10 @@
       <button id="slideshow" type="button" hidden>Putar slideshow</button>
     </aside>
   </div>
+  <section id="recapSummary" aria-labelledby="recapTitle" hidden>
+    <h2 id="recapTitle">Recap kenangan</h2>
+    <p id="recapDetails"></p>
+  </section>
   <section id="wall" aria-label="Scrapbook foto" hidden></section>
   <div class="memory-progress"><progress id="regionProgress" aria-label="Kemajuan wilayah terisi" hidden></progress><p id="progressText"></p></div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
