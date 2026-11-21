@@ -9,6 +9,9 @@ const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri"
 const regions = new Map();
 const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
+const globe = [-30300, -7900, 44000, 15400];
+const lockedLayer = document.createElementNS(map.namespaceURI, "g");
+map.append(lockedLayer);
 const mapLabels = [
   ["Laut Jawa", 110.3, -5.7],
   ["Madura", 113.5, -6.65],
@@ -18,6 +21,7 @@ const project = (lon, lat) => [(lon - 104.8) * 83, (-4.85 - lat) * 83];
 let records = [], selected, user, cloud, uid, profile, view = overview, renderId = 0;
 let sessionId = 0;
 const demo = !firebaseConfig && !publicSlug;
+const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
 const message = text => { $("status").textContent = text; };
 const canAdd = () => demo || Boolean(user && uid === user.uid && !publicSlug);
@@ -48,27 +52,32 @@ async function localPhotos(record) {
 
 function setView(next) {
   const [x, y, w, h] = next;
+  const [west, north] = project(-180, 90);
+  const [east, south] = project(180, -90);
+  const clamp = (position, length, start, end) => length >= end - start
+    ? (start + end - length) / 2
+    : Math.max(start - length * .1, Math.min(end - length * .9, position));
   view = [
-    Math.max(-w * .12, Math.min(overview[2] - w * .88, x)),
-    Math.max(-h * .12, Math.min(overview[3] - h * .88, y)), w, h,
+    clamp(x, w, west, east), clamp(y, h, north, south), w, h,
   ];
   map.setAttribute("viewBox", view.join(" "));
-  map.classList.toggle("map-zoomed", w < 780);
+  map.classList.toggle("map-zoomed", w < 780 || w > 1600);
+  map.classList.toggle("global-view", w > 5000);
 }
 
 function zoom(factor) {
   const [x, y, width, height] = view;
-  if (width * factor >= overview[2]) { setView(overview); return; }
+  if (width * factor >= globe[2]) { setView(globe); return; }
   const scale = Math.max(22, width * factor) / width;
   setView([x + width * (1-scale)/2, y + height * (1-scale)/2, width * scale, height * scale]);
 }
 
-function draw(data) {
+function draw(data, locked = false) {
   const shapes = document.createDocumentFragment();
   for (const feature of data.features) {
     const { id, district, province } = feature.properties;
     if (!feature.geometry) continue;
-    const name = titleCase(district);
+    const name = locked ? district : titleCase(district);
     const provinceName = titleCase(province).replace(/^Dki /, "DKI ");
     const polygons = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -77,15 +86,16 @@ function draw(data) {
         project(lon, lat).map(value => value.toFixed(2)).join(",")).join("") + "Z"
     )).join("");
     path.setAttribute("d", geometry);
-    path.setAttribute("class", "district");
+    path.setAttribute("class", locked ? "district locked" : "district active");
     path.setAttribute("fill-rule", "evenodd");
     const label = document.createElementNS(path.namespaceURI, "title");
-    label.textContent = name + ", " + provinceName;
+    label.textContent = name + (provinceName ? ", " + provinceName : "") + (locked ? " · Segera hadir" : "");
     path.append(label);
     path.addEventListener("click", () => { if (!dragged) select(id); });
-    regions.set(id, { name, province: provinceName, path });
+    regions.set(id, { name, province: provinceName, path, locked });
     shapes.append(path);
   }
+  if (locked) { lockedLayer.append(shapes); render(); return; }
   map.append(shapes);
   const labels = document.createElementNS(map.namespaceURI, "g");
   labels.classList.add("map-labels");
@@ -110,7 +120,7 @@ function select(id, focus = false) {
   $("results").replaceChildren();
   if (focus) {
     const box = regions.get(id).path.getBBox();
-    const width = Math.min(1000, Math.max(28, box.width * 2.4, box.height * 5));
+    const width = Math.min(globe[2], Math.max(28, box.width * 1.7, box.height * 4.8));
     const height = width * overview[3] / overview[2];
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
@@ -120,7 +130,7 @@ function select(id, focus = false) {
 
 async function render() {
   const generation = ++renderId;
-  const activeRecords = records.filter(photo => regions.has(photo.region));
+  const activeRecords = records.filter(photo => regions.has(photo.region) && !regions.get(photo.region).locked);
   const occupied = new Set(activeRecords.map(photo => photo.region));
   $("colored").textContent = occupied.size;
   $("total").textContent = activeRecords.length;
@@ -131,9 +141,26 @@ async function render() {
   for (const url of photoUrls) URL.revokeObjectURL(url);
   photoUrls.clear();
   $("photos").replaceChildren();
-  $("add").hidden = !selected || !canAdd();
   const place = regions.get(selected);
+  $("add").hidden = !place || place.locked || !canAdd();
+  $("request").hidden = !place?.locked;
+  $("requestStatus").hidden = true;
+  $("requestStatus").textContent = "";
   $("region").textContent = place?.name || "Pilih daerah";
+  if (place?.locked) {
+    $("detail").textContent = "Segera hadir · Album wilayah ini masih terkunci.";
+    if (demo) {
+      try {
+        if (localStorage.getItem("atlas-request:" + selected)) {
+          $("requestStatus").hidden = false;
+          $("requestStatus").textContent = demoRequestMessage;
+        }
+      } catch {
+        // A browser can block local storage without blocking the map.
+      }
+    }
+    return;
+  }
   const photos = records.filter(photo => photo.region === selected).sort((a,b) => b.created-a.created);
   $("detail").textContent = place
     ? place.province + " · " + (photos.length ? photos.length + " foto" : "Belum ada foto")
@@ -178,14 +205,14 @@ $("search").oninput = () => {
     return (full + " " + province.toLowerCase()).includes(term) ? 3 : Infinity;
   };
   const matches = [...regions].filter(([, place]) => Number.isFinite(rank(place)))
-    .sort(([, a], [, b]) => rank(a) - rank(b));
+    .sort(([, a], [, b]) => rank(a) - rank(b) || Number(a.locked) - Number(b.locked));
   for (const [id, place] of matches.slice(0, 12)) {
     const item = document.createElement("button");
-    item.textContent = place.name + " · " + place.province;
+    item.textContent = place.name + (place.locked ? " · Segera hadir" : " · " + place.province);
     item.onclick = () => select(id, true);
     list.append(item);
   }
-  if (!list.children.length) list.textContent = "Daerah belum tersedia di peta Jawa.";
+  if (!list.children.length) list.textContent = "Daerah atau negara tidak ditemukan.";
 };
 $("search").onkeydown = event => {
   if (event.key === "Enter") $("results").querySelector("button")?.click();
@@ -196,6 +223,7 @@ document.addEventListener("click", event => {
 });
 $("plus").onclick = () => zoom(.65);
 $("minus").onclick = () => zoom(1/.65);
+$("world").onclick = () => setView(globe);
 $("reset").onclick = () => setView(overview);
 let drag, dragged = false;
 map.addEventListener("pointerdown", event => {
@@ -230,8 +258,35 @@ async function prepare(file) {
 }
 
 $("add").onclick = () => $("files").click();
+$("request").onclick = async () => {
+  const id = selected;
+  const place = regions.get(id);
+  if (!place?.locked) return;
+  const status = $("requestStatus");
+  $("request").disabled = true;
+  let outcome;
+  try {
+    if (demo) {
+      localStorage.setItem("atlas-request:" + id, place.name);
+      outcome = demoRequestMessage;
+    } else if (cloud && user) {
+      await cloud.request(user.uid, id, place.name);
+      outcome = "Usulan wilayah terkirim.";
+    } else {
+      outcome = "Masuk dengan Google di halaman utama untuk mengirim usulan.";
+    }
+  } catch {
+    outcome = "Usulan gagal disimpan. Coba lagi.";
+  } finally {
+    $("request").disabled = false;
+  }
+  if (id === selected) {
+    status.hidden = false;
+    status.textContent = outcome;
+  }
+};
 $("files").onchange = async () => {
-  if (!canAdd()) return;
+  if (!canAdd() || !regions.has(selected) || regions.get(selected).locked) return;
   const region = selected, owner = uid, generation = sessionId;
   const files = Array.from($("files").files);
   if (!files.length) return;
@@ -357,6 +412,13 @@ async function start() {
     $("region").textContent = "Peta gagal dimuat";
     $("search").placeholder = "Peta gagal dimuat";
   });
+  fetch("/world.json").then(response => {
+    if (!response.ok) throw new Error("Peta dunia gagal dimuat");
+    return response.json();
+  }).then(data => {
+    draw(data, true);
+    if ($("search").value) $("search").oninput();
+  }).catch(error => console.error(error));
   if (demo) {
     message("Mode demo · Foto disimpan di browser ini.");
     records = await localPhotos();

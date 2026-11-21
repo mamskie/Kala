@@ -14,6 +14,9 @@ export async function connect() {
   const photoList = uid => db.collection(database, "profiles", uid, "photos");
 
   return {
+    request: (uid, place, name) => db.setDoc(db.doc(database, "regionRequests", uid, "places", place), {
+      name, requestedAt: db.serverTimestamp(),
+    }),
     subscribe: onUser => auth.onAuthStateChanged(session, onUser),
     login: () => auth.signInWithPopup(session, new auth.GoogleAuthProvider()),
     logout: () => auth.signOut(session),
