@@ -99,6 +99,8 @@ function draw(data) {
     labels.append(label);
   }
   map.append(labels);
+  $("search").placeholder = "Contoh: Kota Bandung";
+  $("search").disabled = false;
   render();
 }
 
@@ -351,7 +353,10 @@ async function start() {
   fetch("/regions.json").then(response => {
     if (!response.ok) throw new Error("Peta gagal dimuat");
     return response.json();
-  }).then(draw).catch(() => { $("region").textContent = "Peta gagal dimuat"; });
+  }).then(draw).catch(() => {
+    $("region").textContent = "Peta gagal dimuat";
+    $("search").placeholder = "Peta gagal dimuat";
+  });
   if (demo) {
     message("Mode demo · Foto disimpan di browser ini.");
     records = await localPhotos();
