@@ -5,13 +5,14 @@
 <meta name="description" content="Simpan foto berdasarkan kabupaten dan kota di peta Jawa.">
 <title>Atlas Kenangan</title>
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/atlas.css">
 <header>
-  <a class="brand" href="/">Atlas Kenangan</a>
+  <a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i> Atlas Kenangan</a>
   <div class="actions"><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
 </header>
 <main>
   <div class="intro">
-    <h1 id="title">Peta kenangan</h1>
+    <div><h1 id="title">Peta kenangan</h1><p id="galleryIntro">Temukan kembali kenanganmu, satu tempat demi satu.</p></div>
     <div class="stats"><div><strong id="colored">0</strong> <span>daerah</span></div><div><strong id="total">0</strong> <span>foto</span></div></div>
   </div>
   <p id="status" role="status"></p>
@@ -32,6 +33,7 @@
     </section>
     <aside aria-label="Album daerah">
       <p class="album-label">Album daerah</p>
+      <div id="albumEmptyArt" class="album-art" aria-hidden="true"><i></i><i></i></div>
       <h2 id="region">Pilih daerah</h2><p id="detail">Klik wilayah di peta atau cari namanya untuk membuka album.</p>
       <button id="request" hidden>Ajukan wilayah</button>
       <p id="requestStatus" role="status" hidden></p>

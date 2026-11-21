@@ -7,6 +7,7 @@ const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const hostSlug = galleryDomain && location.hostname.endsWith("." + galleryDomain)
   ? location.hostname.slice(0, -(galleryDomain.length + 1)) : "";
 const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri");
+document.documentElement.classList.toggle("visitor", Boolean(publicSlug));
 const regions = new Map();
 const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
@@ -259,6 +260,7 @@ async function render() {
   }
   $("colored").textContent = grouped.size;
   $("total").textContent = activeRecords.length;
+  $("albumEmptyArt").hidden = activeRecords.some(photo => photo.region === selected);
   const activeCount = [...regions.values()].filter(region => !region.locked).length;
   const favorite = [...grouped].sort(([, a], [, b]) => b.count - a.count)[0];
   if (recapMode) {
@@ -810,6 +812,10 @@ $("account").onclick = async () => {
 async function start() {
   $("account").hidden = Boolean(publicSlug);
   $("share").hidden = Boolean(publicSlug);
+  if (publicSlug) {
+    $("galleryIntro").textContent = "Jelajahi tempat dan foto yang dibagikan di galeri ini.";
+    if (slugPattern.test(publicSlug)) $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
+  }
   fetch("/regions.json").then(response => {
     if (!response.ok) throw new Error("Peta gagal dimuat");
     return response.json();
