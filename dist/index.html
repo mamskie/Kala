@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/style.css">
 <header>
   <a class="brand" href="/"><span aria-hidden="true">✦</span> Atlas Kenangan</a>
-  <div class="actions"><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
+  <div class="actions"><a id="sampleLink" class="button-link" href="/?contoh=1">Galeri contoh</a><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
 </header>
 <main>
   <div class="intro">
@@ -27,6 +27,7 @@
       <button id="request" hidden>Ajukan wilayah</button>
       <p id="requestStatus" role="status" hidden></p>
       <button id="add" class="primary" hidden>+ Tambah foto</button>
+      <button id="addSample" hidden>Tambah foto contoh</button>
       <input id="files" type="file" multiple accept="image/*" hidden>
       <div id="photos" aria-label="Foto album"></div>
       <div id="albumNav" class="album-nav" hidden>
@@ -36,9 +37,14 @@
       </div>
     </aside>
   </div>
+  <details id="sampleCredits" hidden><summary>Kredit foto contoh</summary><ul>
+    <li><a href="https://commons.wikimedia.org/wiki/File:Borobudur,_Java.jpg">Borobudur, Java</a> oleh Bernard Gagnon, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.</li>
+    <li><a href="https://commons.wikimedia.org/wiki/File:Borobudur_grounds.jpg">Borobudur grounds</a> oleh Andrew Otto, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC BY-SA 2.0</a>.</li>
+    <li><a href="https://commons.wikimedia.org/wiki/File:Borobudur_temple_panorama.jpg">Borobudur temple panorama</a> oleh Pandu Adnyana, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</li>
+  </ul></details>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
 </main>
-<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat peta dan fotonya.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
+<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat peta dan fotonya.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><a id="previewSample" class="button-link" href="/?contoh=publik" hidden>Lihat sebagai pengunjung</a><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
 <dialog id="viewer"><div class="actions"><button id="closeViewer" autofocus>Tutup</button><button id="deletePhoto" class="danger" hidden>Hapus foto</button></div><img id="full" alt=""><div id="confirmDelete" hidden><p id="deleteStatus" role="status">Hapus foto ini secara permanen?</p><div class="actions"><button id="cancelDelete">Batal</button><button id="doDelete" class="danger">Ya, hapus foto</button></div></div></dialog>
 <script type="module" src="/app.mjs"></script>
 </html>
