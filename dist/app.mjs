@@ -20,6 +20,8 @@ const mapLabels = [
 const project = (lon, lat) => [(lon - 104.8) * 83, (-4.85 - lat) * 83];
 let records = [], selected, user, cloud, uid, profile, view = overview, renderId = 0;
 let sessionId = 0;
+let viewedPhoto;
+let deleting = false;
 const demo = !firebaseConfig && !publicSlug;
 const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
@@ -35,13 +37,13 @@ function localDatabase() {
   });
 }
 
-async function localPhotos(record) {
+async function localPhotos(record, removeId) {
   const database = await localDatabase();
   try {
     return await new Promise((resolve, reject) => {
-      const transaction = database.transaction("photos", record ? "readwrite" : "readonly");
+      const transaction = database.transaction("photos", record || removeId ? "readwrite" : "readonly");
       const store = transaction.objectStore("photos");
-      const request = record ? store.add(record) : store.getAll();
+      const request = removeId ? store.delete(removeId) : record ? store.add(record) : store.getAll();
       transaction.oncomplete = () => resolve(record || request.result);
       transaction.onabort = () => reject(transaction.error);
     });
@@ -182,7 +184,14 @@ async function render() {
         caption.textContent = photos.length + " foto";
         button.append(caption);
       }
-      button.onclick = () => { $("full").src = url; $("full").alt = image.alt; $("viewer").showModal(); };
+      button.onclick = () => {
+        viewedPhoto = photo;
+        $("full").src = url;
+        $("full").alt = image.alt;
+        $("confirmDelete").hidden = true;
+        $("deletePhoto").hidden = !canAdd();
+        $("viewer").showModal();
+      };
       $("photos").append(button);
     } catch {
       if (generation === renderId) $("detail").textContent = place.province + " · Sebagian foto gagal dimuat.";
@@ -327,16 +336,54 @@ function showLink() {
   $("publicLink").value = slug ? (galleryDomain
     ? "https://" + slug + "." + galleryDomain + "/"
     : location.origin + "/?galeri=" + encodeURIComponent(slug)) : "";
+  $("publishButton").disabled = !uid || !cloud;
+  previewLink();
 }
 
+function previewLink() {
+  const draft = $("slug").value.trim();
+  const name = slugPattern.test(draft) && draft.length >= 3 && draft.length <= 40 ? draft : "nama-galeri";
+  $("linkPreview").textContent = name + "." + (galleryDomain || "domainmu.id") + (galleryDomain ? "" : " (contoh alamat)");
+}
+$("slug").oninput = previewLink;
 $("share").onclick = () => {
-  $("shareError").textContent = "";
+  $("shareError").textContent = demo ? "Berbagi publik memerlukan Firebase dan hosting publik. Subdomain juga memerlukan domain induk."
+    : !uid ? "Masuk dengan Google untuk menerbitkan galeri."
+    : !galleryDomain ? "Tautan biasa tersedia. Subdomain menunggu konfigurasi domain induk." : "";
   showLink();
   $("publish").showModal();
 };
 $("close").onclick = () => $("publish").close();
-$("closeViewer").onclick = () => $("viewer").close();
-$("viewer").onclose = () => $("full").removeAttribute("src");
+$("closeViewer").onclick = () => { if (!deleting) $("viewer").close(); };
+$("viewer").oncancel = event => { if (deleting) event.preventDefault(); };
+$("viewer").onclose = () => { viewedPhoto = undefined; $("full").removeAttribute("src"); };
+$("deletePhoto").onclick = () => {
+  $("deleteStatus").textContent = "Hapus foto ini secara permanen?";
+  $("confirmDelete").hidden = false;
+  $("cancelDelete").focus();
+};
+$("cancelDelete").onclick = () => { $("confirmDelete").hidden = true; $("deletePhoto").focus(); };
+$("doDelete").onclick = async () => {
+  if (!viewedPhoto || !canAdd() || deleting) return;
+  const { id } = viewedPhoto;
+  const owner = uid, generation = sessionId;
+  const controls = $("viewer").querySelectorAll("button");
+  deleting = true;
+  controls.forEach(button => { button.disabled = true; });
+  try {
+    const removed = demo ? (await localPhotos(undefined, id), true) : await cloud.remove(owner, id);
+    if (generation !== sessionId) return;
+    records = records.filter(photo => photo.id !== id);
+    $("viewer").close();
+    message(removed ? "Foto dihapus." : "Foto dihapus dari galeri. Berkas di penyimpanan belum berhasil dibersihkan.");
+    render();
+  } catch {
+    $("deleteStatus").textContent = "Foto gagal dihapus. Coba lagi.";
+  } finally {
+    deleting = false;
+    controls.forEach(button => { button.disabled = false; });
+  }
+};
 $("copy").onclick = async () => {
   try {
     await navigator.clipboard.writeText($("publicLink").value);
@@ -347,6 +394,7 @@ $("copy").onclick = async () => {
 };
 
 async function publish(next) {
+  if (!uid || !cloud) return;
   const generation = sessionId;
   const buttons = $("publishForm").querySelectorAll("button");
   buttons.forEach(button => { button.disabled = true; });
@@ -374,7 +422,7 @@ async function loadAccount(account) {
   uid = undefined;
   profile = undefined;
   records = [];
-  $("share").hidden = true;
+  if ($("viewer").open) $("viewer").close();
   $("account").textContent = user ? "Keluar" : "Masuk dengan Google";
   if ($("publish").open) $("publish").close();
   render();
@@ -386,7 +434,6 @@ async function loadAccount(account) {
     uid = account.uid;
     records = nextRecords;
     profile = nextProfile;
-    $("share").hidden = false;
     message("");
     render();
   } catch {
@@ -405,6 +452,7 @@ $("account").onclick = async () => {
 
 async function start() {
   $("account").hidden = Boolean(publicSlug);
+  $("share").hidden = Boolean(publicSlug);
   fetch("/regions.json").then(response => {
     if (!response.ok) throw new Error("Peta gagal dimuat");
     return response.json();

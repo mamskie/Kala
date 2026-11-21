@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/style.css">
 <header>
   <a class="brand" href="/"><span aria-hidden="true">✦</span> Atlas Kenangan</a>
-  <div class="actions"><button id="share" hidden>Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
+  <div class="actions"><button id="share">Bagikan peta</button><button id="account" class="primary">Masuk dengan Google</button></div>
 </header>
 <main>
   <div class="intro">
@@ -33,7 +33,7 @@
   </div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
 </main>
-<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan dapat melihat peta dan foto kamu.</p><label for="slug">Nama galeri di tautan</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="contoh: jalan-jalan-ani"><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button class="primary">Terbitkan</button></div></form></dialog>
-<dialog id="viewer"><button id="closeViewer" autofocus>Tutup</button><img id="full" alt=""></dialog>
+<dialog id="publish"><form id="publishForm"><h2>Bagikan peta</h2><p>Siapa pun yang membuka tautan galeri publik dapat melihat peta dan fotonya.</p><label for="slug">Nama subdomain galeri</label><input id="slug" required minlength="3" maxlength="40" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="jalan-jalan-ani"><p id="linkPreview"></p><p id="shareError" role="status"></p><input id="publicLink" aria-label="Tautan galeri" readonly hidden><div class="actions"><button type="button" id="close">Tutup</button><button type="button" id="unpublish" hidden>Jadikan privat</button><button type="button" id="copy" hidden>Salin tautan</button><button id="publishButton" class="primary">Terbitkan</button></div></form></dialog>
+<dialog id="viewer"><div class="actions"><button id="closeViewer" autofocus>Tutup</button><button id="deletePhoto" class="danger" hidden>Hapus foto</button></div><img id="full" alt=""><div id="confirmDelete" hidden><p id="deleteStatus" role="status">Hapus foto ini secara permanen?</p><div class="actions"><button id="cancelDelete">Batal</button><button id="doDelete" class="danger">Ya, hapus foto</button></div></div></dialog>
 <script type="module" src="/app.mjs"></script>
 </html>

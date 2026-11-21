@@ -45,6 +45,20 @@ export async function connect() {
     async photo(uid, id) {
       return storage.getBlob(storage.ref(bucket, "memories/" + uid + "/" + id), 5 * 1024 * 1024);
     },
+    async remove(uid, id) {
+      await db.deleteDoc(db.doc(photoList(uid), id));
+      const object = storage.ref(bucket, "memories/" + uid + "/" + id);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await storage.deleteObject(object);
+          return true;
+        } catch (error) {
+          if (error.code === "storage/object-not-found") return true;
+          if (attempt === 1) console.error(error);
+        }
+      }
+      return false;
+    },
     async publish(uid, next) {
       await db.runTransaction(database, async transaction => {
         const previous = (await transaction.get(profileRef(uid))).data()?.slug;

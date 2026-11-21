@@ -23,6 +23,7 @@ service cloud.firestore {
           resource.data.slug == request.resource.data.slug ||
           !existsAfter(/databases/$(database)/documents/galleries/$(resource.data.slug)));
       match /photos/{photo} {
+        allow delete: if owner(uid);
         allow read: if owner(uid) || shared(uid);
         allow create: if owner(uid)
           && request.resource.data.keys().hasOnly(['region','created'])
