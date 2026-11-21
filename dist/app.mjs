@@ -8,7 +8,14 @@ const hostSlug = galleryDomain && location.hostname.endsWith("." + galleryDomain
 const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri");
 const regions = new Map();
 const photoUrls = new Set();
-let records = [], selected, user, cloud, uid, profile, view = [0, 0, 1000, 390], renderId = 0;
+const overview = [0, 0, 1000, 390];
+const mapLabels = [
+  ["Sumatra", 101, 2.1], ["Kalimantan", 114.1, .6], ["Jawa", 110, -8.9],
+  ["Sulawesi", 122.6, .8], ["Maluku", 128.2, -3.2], ["Papua", 138.9, -4.2],
+  ["Nusa Tenggara", 119.3, -11.5],
+];
+const project = (lon, lat) => [(lon - 94) * 20.7, (6.7 - lat) * 20.7];
+let records = [], selected, user, cloud, uid, profile, view = overview, renderId = 0;
 let sessionId = 0;
 const demo = !firebaseConfig && !publicSlug;
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
@@ -40,13 +47,19 @@ async function localPhotos(record) {
 }
 
 function setView(next) {
-  view = next;
+  const [x, y, w, h] = next;
+  view = [
+    Math.max(-w * .12, Math.min(overview[2] - w * .88, x)),
+    Math.max(-h * .12, Math.min(overview[3] - h * .88, y)), w, h,
+  ];
   map.setAttribute("viewBox", view.join(" "));
+  map.classList.toggle("map-zoomed", w < 780);
 }
 
 function zoom(factor) {
   const [x, y, width, height] = view;
-  const scale = Math.max(90, Math.min(1000, width * factor)) / width;
+  if (width * factor >= overview[2]) { setView(overview); return; }
+  const scale = Math.max(22, width * factor) / width;
   setView([x + width * (1-scale)/2, y + height * (1-scale)/2, width * scale, height * scale]);
 }
 
@@ -56,11 +69,12 @@ function draw(data) {
     const { id, district, province } = feature.properties;
     if (!feature.geometry) continue;
     const name = titleCase(district);
-    const provinceName = titleCase(province);
+    const provinceName = titleCase(province).replace(/^Dki /, "DKI ");
     const polygons = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     const geometry = polygons.flatMap(polygon => polygon.map(ring =>
-      ring.map(([lon, lat], index) => (index ? "L" : "M") + ((lon-94)*20.7).toFixed(2) + "," + ((6.7-lat)*20.7).toFixed(2)).join("") + "Z"
+      ring.map(([lon, lat], index) => (index ? "L" : "M") +
+        project(lon, lat).map(value => value.toFixed(2)).join(",")).join("") + "Z"
     )).join("");
     path.setAttribute("d", geometry);
     path.setAttribute("class", "district");
@@ -73,6 +87,18 @@ function draw(data) {
     shapes.append(path);
   }
   map.append(shapes);
+  const labels = document.createElementNS(map.namespaceURI, "g");
+  labels.classList.add("map-labels");
+  labels.setAttribute("aria-hidden", "true");
+  for (const [name, lon, lat] of mapLabels) {
+    const label = document.createElementNS(map.namespaceURI, "text");
+    const [x, y] = project(lon, lat);
+    label.setAttribute("x", x);
+    label.setAttribute("y", y);
+    label.textContent = name;
+    labels.append(label);
+  }
+  map.append(labels);
   render();
 }
 
@@ -82,7 +108,7 @@ function select(id, focus = false) {
   $("results").replaceChildren();
   if (focus) {
     const box = regions.get(id).path.getBBox();
-    const width = Math.min(1000, Math.max(105, box.width * 2.4, box.height * 6));
+    const width = Math.min(1000, Math.max(28, box.width * 2.4, box.height * 5));
     const height = width * .39;
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
@@ -109,7 +135,7 @@ async function render() {
   $("detail").textContent = place
     ? place.province + " · " + (photos.length ? photos.length + " foto" : "Belum ada foto")
     : "Klik wilayah di peta atau cari namanya untuk membuka album.";
-  for (const photo of photos) {
+  for (const [index, photo] of photos.entries()) {
     try {
       const blob = photo.blob || await cloud.photo(uid, photo.id);
       if (generation !== renderId) return;
@@ -120,6 +146,12 @@ async function render() {
       image.src = url;
       image.alt = "Foto kenangan di " + place.name;
       button.append(image);
+      if (index === 0) {
+        button.classList.add("album-cover");
+        const caption = document.createElement("span");
+        caption.textContent = photos.length + " foto";
+        button.append(caption);
+      }
       button.onclick = () => { $("full").src = url; $("full").alt = image.alt; $("viewer").showModal(); };
       $("photos").append(button);
     } catch {
@@ -134,7 +166,7 @@ $("search").oninput = () => {
   list.replaceChildren();
   if (!query) return;
   for (const [id, place] of [...regions].filter(([, p]) =>
-    (p.name + " " + p.province).toLowerCase().includes(query)
+    (p.name + " " + p.province).toLowerCase().includes(query.replace(/^(kabupaten|kab\.?)\s+/, ""))
   ).slice(0, 12)) {
     const item = document.createElement("button");
     item.textContent = place.name + " · " + place.province;
@@ -152,7 +184,7 @@ document.addEventListener("click", event => {
 });
 $("plus").onclick = () => zoom(.65);
 $("minus").onclick = () => zoom(1/.65);
-$("reset").onclick = () => setView([0,0,1000,390]);
+$("reset").onclick = () => setView(overview);
 let drag, dragged = false;
 map.addEventListener("pointerdown", event => {
   if (event.button !== 0 || !event.isPrimary) return;
