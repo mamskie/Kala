@@ -5,15 +5,7 @@ const map = $("map");
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const hostSlug = galleryDomain && location.hostname.endsWith("." + galleryDomain)
   ? location.hostname.slice(0, -(galleryDomain.length + 1)) : "";
-const params = new URLSearchParams(location.search);
-const publicSlug = hostSlug || params.get("galeri");
-const sample = !publicSlug && params.get("contoh") === "1";
-const samplePublic = !publicSlug && params.get("contoh") === "publik";
-const sampleRegion = "JAWA TENGAH/MAGELANG";
-const samplePhotos = [["candi", "Candi Borobudur"], ["halaman", "Halaman Candi Borobudur"], ["panorama", "Panorama stupa Borobudur"]].map(([name, alt], index) => ({
-  id: "sample-" + name, region: sampleRegion, created: 3 - index, asset: "/contoh/" + name + ".jpg", alt,
-}));
-const requestPrefix = sample ? "atlas-sample-request:" : "atlas-request:";
+const publicSlug = hostSlug || new URLSearchParams(location.search).get("galeri");
 const regions = new Map();
 const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
@@ -30,7 +22,7 @@ let records = [], selected, user, cloud, uid, profile, view = overview, renderId
 let sessionId = 0;
 let viewedPhoto;
 let deleting = false;
-const demo = sample || (!firebaseConfig && !publicSlug && !samplePublic);
+const demo = !firebaseConfig && !publicSlug;
 const demoRequestMessage = "Usulan tersimpan di browser ini selama mode demo.";
 const albumTrack = $("photos");
 const titleCase = name => name.toLowerCase().replace(/\b\p{L}/gu, letter => letter.toUpperCase());
@@ -39,11 +31,8 @@ const canAdd = () => demo || Boolean(user && uid === user.uid && !publicSlug);
 
 function localDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(sample ? "atlas-kenangan-contoh" : "atlas-kenangan", 1);
-    request.onupgradeneeded = () => {
-      const store = request.result.createObjectStore("photos", { keyPath: "id" });
-      if (sample) samplePhotos.forEach(photo => store.add(photo));
-    };
+    const request = indexedDB.open("atlas-kenangan", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("photos", { keyPath: "id" });
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -125,7 +114,6 @@ function draw(data, locked = false) {
   map.append(labels);
   $("search").placeholder = "Contoh: Kota Bandung";
   $("search").disabled = false;
-  if ((sample || samplePublic) && !selected && regions.has(sampleRegion)) selected = sampleRegion;
   render();
 }
 
@@ -185,7 +173,6 @@ async function render() {
   updateAlbumNav();
   const place = regions.get(selected);
   $("add").hidden = !place || place.locked || !canAdd();
-  $("addSample").hidden = !sample || $("add").hidden;
   $("request").hidden = !place?.locked;
   $("requestStatus").hidden = true;
   $("requestStatus").textContent = "";
@@ -194,7 +181,7 @@ async function render() {
     $("detail").textContent = "Segera hadir · Album wilayah ini masih terkunci.";
     if (demo) {
       try {
-        if (localStorage.getItem(requestPrefix + selected)) {
+        if (localStorage.getItem("atlas-request:" + selected)) {
           $("requestStatus").hidden = false;
           $("requestStatus").textContent = demoRequestMessage;
         }
@@ -210,14 +197,14 @@ async function render() {
     : "Klik wilayah di peta atau cari namanya untuk membuka album.";
   for (const [index, photo] of photos.entries()) {
     try {
-      const blob = photo.asset ? null : photo.blob || await cloud.photo(uid, photo.id);
+      const blob = photo.blob || await cloud.photo(uid, photo.id);
       if (generation !== renderId) return;
-      const url = photo.asset || URL.createObjectURL(blob);
-      if (!photo.asset) photoUrls.add(url);
+      const url = URL.createObjectURL(blob);
+      photoUrls.add(url);
       const button = document.createElement("button");
       const image = new Image();
       image.src = url;
-      image.alt = photo.alt || "Foto kenangan di " + place.name;
+      image.alt = "Foto kenangan di " + place.name;
       button.append(image);
       if (index === 0) {
         button.classList.add("album-cover");
@@ -318,7 +305,7 @@ $("request").onclick = async () => {
   let outcome;
   try {
     if (demo) {
-      localStorage.setItem(requestPrefix + id, place.name);
+      localStorage.setItem("atlas-request:" + id, place.name);
       outcome = demoRequestMessage;
     } else if (cloud && user) {
       await cloud.request(user.uid, id, place.name);
@@ -336,28 +323,12 @@ $("request").onclick = async () => {
     status.textContent = outcome;
   }
 };
-$("files").onchange = () => {
+$("files").onchange = async () => {
+  if (!canAdd() || !regions.has(selected) || regions.get(selected).locked) return;
+  const region = selected, owner = uid, generation = sessionId;
   const files = Array.from($("files").files);
+  if (!files.length) return;
   $("files").value = "";
-  savePhotos(files, selected);
-};
-$("addSample").onclick = async () => {
-  if (!sample) return;
-  const region = selected;
-  $("addSample").disabled = true;
-  try {
-    const response = await fetch(samplePhotos[2].asset);
-    if (!response.ok) throw new Error("Foto contoh gagal dimuat");
-    await savePhotos([await response.blob()], region);
-  } catch {
-    message("Foto contoh gagal dimuat. Coba lagi.");
-  } finally {
-    $("addSample").disabled = false;
-  }
-};
-async function savePhotos(files, region) {
-  if (!files.length || $("add").disabled || !canAdd() || !regions.has(region) || regions.get(region).locked) return;
-  const owner = uid, generation = sessionId;
   $("add").disabled = true;
   message("Menyimpan foto…");
   let saved = 0, failures = 0;
@@ -385,21 +356,16 @@ async function savePhotos(files, region) {
   } finally {
     $("add").disabled = false;
   }
-}
+};
 
 function showLink() {
-  const slug = sample ? "kenangan-borobudur" : profile?.slug;
+  const slug = profile?.slug;
   $("slug").value = slug || "";
   $("copy").hidden = $("publicLink").hidden = $("unpublish").hidden = !slug;
   $("publicLink").value = slug ? (galleryDomain
     ? "https://" + slug + "." + galleryDomain + "/"
     : location.origin + "/?galeri=" + encodeURIComponent(slug)) : "";
   $("publishButton").disabled = !uid || !cloud;
-  if (sample) {
-    $("unpublish").hidden = true;
-    $("publicLink").value = location.origin + "/?contoh=publik";
-    $("previewSample").hidden = false;
-  }
   previewLink();
 }
 
@@ -410,8 +376,7 @@ function previewLink() {
 }
 $("slug").oninput = previewLink;
 $("share").onclick = () => {
-  $("shareError").textContent = sample ? "Salin tautan untuk melihat contoh tampilan pengunjung. Tautan ini menampilkan foto bawaan."
-    : demo ? "Berbagi publik memerlukan Firebase dan hosting publik. Subdomain juga memerlukan domain induk."
+  $("shareError").textContent = demo ? "Berbagi publik memerlukan Firebase dan hosting publik. Subdomain juga memerlukan domain induk."
     : !uid ? "Masuk dengan Google untuk menerbitkan galeri."
     : !galleryDomain ? "Tautan biasa tersedia. Subdomain menunggu konfigurasi domain induk." : "";
   showLink();
@@ -515,14 +480,8 @@ $("account").onclick = async () => {
 };
 
 async function start() {
-  $("account").hidden = Boolean(publicSlug) || samplePublic;
-  $("share").hidden = Boolean(publicSlug) || samplePublic;
-  $("sampleCredits").hidden = !sample && !samplePublic;
-  if (sample || samplePublic) {
-    $("sampleLink").textContent = sample ? "Peta saya" : "Coba galeri";
-    $("sampleLink").href = sample ? "/" : "/?contoh=1";
-    $("title").textContent = "Kenangan Borobudur";
-  }
+  $("account").hidden = Boolean(publicSlug);
+  $("share").hidden = Boolean(publicSlug);
   fetch("/regions.json").then(response => {
     if (!response.ok) throw new Error("Peta gagal dimuat");
     return response.json();
@@ -537,11 +496,9 @@ async function start() {
     draw(data, true);
     if ($("search").value) $("search").oninput();
   }).catch(error => console.error(error));
-  if (demo || samplePublic) {
-    message(samplePublic ? "Contoh tampilan pengunjung · Album hanya bisa dilihat."
-      : sample ? "Galeri contoh · Geser foto di album Magelang atau coba ajukan Bali."
-      : "Mode demo · Foto disimpan di browser ini.");
-    records = samplePublic ? samplePhotos : await localPhotos();
+  if (demo) {
+    message("Mode demo · Foto disimpan di browser ini.");
+    records = await localPhotos();
     render();
     return;
   }
