@@ -11,6 +11,7 @@ document.documentElement.classList.toggle("visitor", Boolean(publicSlug));
 const regions = new Map();
 const photoUrls = new Set();
 const overview = [0, 0, 1000, 350];
+const indonesia = [-1020, -970, 4400, 1540];
 const globe = [-30300, -7900, 44000, 15400];
 const lockedLayer = document.createElementNS(map.namespaceURI, "g");
 const pinLayer = document.createElementNS(map.namespaceURI, "g");
@@ -427,7 +428,7 @@ document.addEventListener("click", event => {
 $("plus").onclick = () => zoom(.65);
 $("minus").onclick = () => zoom(1/.65);
 $("world").onclick = () => setView(globe);
-$("reset").onclick = () => setView(overview);
+$("reset").onclick = () => setView(indonesia);
 $("mapMode").onclick = () => { wallMode = recapMode = false; render(); };
 $("wallMode").onclick = () => { recapMode = false; wallMode = true; stopSlideshow(); render(); };
 $("recapMode").onclick = () => {
