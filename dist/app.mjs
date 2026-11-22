@@ -46,6 +46,8 @@ let recapMode = false;
 let slideshow;
 let trashRecords = [];
 let slugCheck = 0;
+let stopSocial;
+let socialGeneration = 0;
 const filteredPhotos = () => records.filter(photo => !photo.deletedAt
   && (!yearFilter || memoryDay(photo).startsWith(yearFilter))
   && (!previousYear || memoryDay(photo) === lastYearDay()));
@@ -809,6 +811,7 @@ async function publish(next) {
     await cloud.publish(uid, next);
     if (generation !== sessionId) return;
     profile = { slug: next };
+    connectSocial(user, next ? uid : null);
     showLink();
     $("shareError").textContent = next ? "Galeri diterbitkan." : "Galeri sekarang privat.";
   } catch (error) {
@@ -828,6 +831,7 @@ async function loadAccount(account) {
   user = account;
   uid = undefined;
   profile = undefined;
+  connectSocial(null, null);
   records = [];
   if ($("viewer").open) $("viewer").close();
   if ($("trashDialog").open) $("trashDialog").close();
@@ -842,6 +846,7 @@ async function loadAccount(account) {
     uid = account.uid;
     records = nextRecords;
     profile = nextProfile;
+    connectSocial(account, nextProfile?.slug ? uid : null);
     message("");
     render();
   } catch {
@@ -853,13 +858,90 @@ $("account").onclick = async () => {
   if (!cloud) { message("Login Google tersedia setelah proyek Firebase tersambung. Foto demo tersimpan di browser ini."); return; }
   try {
     if (user) await cloud.logout(); else await cloud.login();
-  } catch {
-    message("Login Google gagal. Periksa apakah domain ini diizinkan di Firebase.");
+  } catch (error) {
+    const reason = error.code === "auth/unauthorized-domain" ? "Domain " + location.hostname + " belum diizinkan di Firebase."
+      : error.code === "auth/popup-blocked" ? "Popup login diblokir. Izinkan popup lalu coba lagi."
+      : error.code === "auth/popup-closed-by-user" ? "Jendela login ditutup. Coba masuk kembali."
+      : "Login Google gagal. Coba lagi.";
+    message(reason);
   }
 };
 
+function connectSocial(account, galleryUid, countView = false) {
+  stopSocial?.();
+  stopSocial = undefined;
+  const generation = ++socialGeneration;
+  const current = () => generation === socialGeneration;
+  $("social").hidden = !galleryUid;
+  $("socialPrompt").hidden = Boolean(account);
+  $("socialBody").hidden = !account;
+  $("commentText").value = "";
+  $("commentList").replaceChildren();
+  $("socialStatus").textContent = "";
+  if (!account || !galleryUid) return;
+
+  let liked = false;
+  const like = $("mapLike");
+  like.disabled = true;
+  like.setAttribute("aria-pressed", "false");
+  like.firstElementChild.textContent = "♡";
+  $("mapViews").textContent = $("mapLikes").textContent = $("mapComments").textContent = "0";
+  const submit = $("commentForm").querySelector("button");
+  submit.disabled = false;
+  const report = () => { if (current()) $("socialStatus").textContent = "Interaksi peta belum bisa dimuat. Coba lagi."; };
+
+  stopSocial = cloud.social.watch(galleryUid, account.uid, update => {
+    if (!current()) return;
+    if (update.totals) {
+      $("mapViews").textContent = update.totals.views;
+      $("mapLikes").textContent = update.totals.likes;
+      $("mapComments").textContent = update.totals.comments;
+    }
+    if (update.liked !== undefined) {
+      liked = update.liked;
+      like.disabled = false;
+      like.setAttribute("aria-pressed", String(liked));
+      like.firstElementChild.textContent = liked ? "♥" : "♡";
+    }
+    if (update.messages) {
+      $("commentList").replaceChildren();
+      for (const comment of update.messages) {
+        const item = document.createElement("li");
+        const author = document.createElement("strong");
+        const body = document.createElement("p");
+        author.textContent = comment.name;
+        body.textContent = comment.text;
+        item.append(author, body);
+        $("commentList").append(item);
+      }
+    }
+  }, report);
+  if (countView && galleryUid !== account.uid) cloud.social.view(galleryUid).catch(report);
+
+  like.onclick = async () => {
+    like.disabled = true;
+    try { await cloud.social.like(galleryUid, !liked); }
+    catch { report(); }
+    finally { if (current()) like.disabled = false; }
+  };
+  $("commentForm").onsubmit = async event => {
+    event.preventDefault();
+    const text = $("commentText").value.trim();
+    if (!text || submit.disabled) return;
+    submit.disabled = true;
+    try {
+      await cloud.social.comment(galleryUid, text);
+      if (current()) {
+        $("commentText").value = "";
+        $("socialStatus").textContent = "Komentar terkirim.";
+      }
+    } catch { report(); }
+    finally { if (current()) submit.disabled = false; }
+  };
+}
+
 async function start() {
-  $("account").hidden = Boolean(publicSlug) || mapOnly;
+  $("account").hidden = mapOnly || Boolean(publicSlug && !firebaseConfig);
   $("share").hidden = Boolean(publicSlug) || mapOnly;
   if (mapOnly) {
     $("title").textContent = "Peta kenangan";
@@ -901,6 +983,11 @@ async function start() {
   if (!publicSlug) { cloud.subscribe(loadAccount); return; }
   uid = slugPattern.test(publicSlug) ? await cloud.gallery(publicSlug) : undefined;
   if (!uid) { message("Galeri ini tidak ditemukan atau sudah dijadikan privat."); return; }
+  cloud.subscribe(account => {
+    user = account;
+    $("account").textContent = account ? "Keluar" : "Masuk dengan Google";
+    connectSocial(account, uid, true);
+  });
   $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
   records = await cloud.list(uid, true);
   render();

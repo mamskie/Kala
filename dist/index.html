@@ -60,6 +60,20 @@
     <p id="recapDetails"></p>
   </section>
   <section id="wall" aria-label="Scrapbook foto" hidden></section>
+  <section id="social" class="social-panel" aria-labelledby="socialTitle" hidden>
+    <h2 id="socialTitle">Interaksi peta</h2>
+    <p id="socialPrompt">Masuk dengan Google untuk melihat interaksi, menyukai, dan berkomentar.</p>
+    <div id="socialBody" hidden>
+      <div class="actions social-counts">
+        <span><strong id="mapViews">0</strong> tayangan</span>
+        <button id="mapLike" type="button" aria-pressed="false"><span aria-hidden="true">♡</span> <strong id="mapLikes">0</strong> suka</button>
+        <span><strong id="mapComments">0</strong> komentar</span>
+      </div>
+      <form id="commentForm"><label for="commentText">Komentar</label><textarea id="commentText" required maxlength="500" rows="3"></textarea><button type="submit">Kirim komentar</button></form>
+      <p id="socialStatus" role="status"></p>
+      <ul id="commentList"></ul>
+    </div>
+  </section>
   <div class="memory-progress"><progress id="regionProgress" aria-label="Kemajuan wilayah terisi" hidden></progress><p id="progressText"></p></div>
   <footer>Batas wilayah · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://github.com/ahsa29/kpu-osm-boundaries-2026">GeoJSON Indonesia</a> · <a href="https://www.naturalearthdata.com/">Natural Earth</a></footer>
 </main>

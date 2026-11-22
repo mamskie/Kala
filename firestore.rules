@@ -21,6 +21,70 @@ service cloud.firestore {
         && data.get('coverAt', 0) is int
         && data.get('visibility', 'private') in ['public', 'private'];
     }
+    function statsPath(uid) {
+      return /databases/$(database)/documents/gallerySocial/$(uid);
+    }
+    function totals(uid) {
+      return exists(statsPath(uid)) ? get(statsPath(uid)).data
+        : {'views': 0, 'likes': 0, 'comments': 0, 'lastComment': ''};
+    }
+    function memberPath(uid, kind) {
+      return /databases/$(database)/documents/gallerySocial/$(uid)/$(kind)/$(request.auth.uid);
+    }
+    function commentPath(uid, id) {
+      return /databases/$(database)/documents/gallerySocial/$(uid)/messages/$(id);
+    }
+    function delta(uid, field, amount) {
+      return getAfter(statsPath(uid)).data[field] == totals(uid)[field] + amount;
+    }
+    function socialAccess(uid) {
+      return request.auth != null && shared(uid);
+    }
+    function validTotals(uid, next) {
+      let previous = totals(uid);
+      let view = memberPath(uid, 'views');
+      let like = memberPath(uid, 'likes');
+      return next.keys().hasAll(['views','likes','comments','lastComment'])
+        && next.keys().hasOnly(['views','likes','comments','lastComment'])
+        && next.views is int && next.likes is int && next.comments is int
+        && next.views >= 0 && next.likes >= 0 && next.comments >= 0
+        && next.lastComment is string
+        && (
+          (uid != request.auth.uid && next.diff(previous).affectedKeys().hasOnly(['views'])
+            && next.views == previous.views + 1 && !exists(view) && existsAfter(view))
+          || (next.diff(previous).affectedKeys().hasOnly(['likes'])
+            && ((next.likes == previous.likes + 1 && !exists(like) && existsAfter(like))
+              || (next.likes == previous.likes - 1 && exists(like) && !existsAfter(like))))
+          || (next.diff(previous).affectedKeys().hasOnly(['comments','lastComment'])
+            && next.comments == previous.comments + 1
+            && next.lastComment.matches('^[A-Za-z0-9]{20}$')
+            && !exists(commentPath(uid, next.lastComment))
+            && getAfter(commentPath(uid, next.lastComment)).data.author == request.auth.uid)
+        );
+    }
+    match /gallerySocial/{uid} {
+      allow get: if socialAccess(uid);
+      allow create, update: if socialAccess(uid) && validTotals(uid, request.resource.data);
+      match /{kind}/{actor} {
+        allow get: if kind in ['views','likes'] && owner(actor) && socialAccess(uid);
+        allow create: if kind in ['views','likes'] && owner(actor) && socialAccess(uid)
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time && delta(uid, kind, 1);
+        allow delete: if kind == 'likes' && owner(actor) && socialAccess(uid) && delta(uid, kind, -1);
+      }
+      match /messages/{id} {
+        allow read: if socialAccess(uid);
+        allow create: if socialAccess(uid)
+          && request.resource.data.keys().hasOnly(['author','name','text','createdAt'])
+          && request.resource.data.author == request.auth.uid
+          && request.resource.data.name == request.auth.token.get('name', 'Pengunjung')
+          && request.resource.data.name is string && request.resource.data.name.size() <= 256
+          && request.resource.data.text is string && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.createdAt == request.time
+          && delta(uid, 'comments', 1) && getAfter(statsPath(uid)).data.lastComment == id;
+      }
+    }
     match /profiles/{uid} {
       allow get: if owner(uid);
       allow create, update: if owner(uid)

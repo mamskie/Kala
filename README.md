@@ -12,6 +12,8 @@ Galeri foto di atas peta Jawa dan pulau-pulau yang termasuk wilayah administrati
 
 Firebase Cloud Storage dan paket Blaze tidak diperlukan untuk penyimpanan foto. Foto hasil kompresi dibatasi 4 MiB agar bisa dikirim lewat fungsi Vercel.
 
+Galeri yang diterbitkan menampilkan interaksi bagi pengunjung yang sudah masuk. Tayangan unik dihitung sekali per akun per galeri, di luar kunjungan pemilik. Suka bisa dibatalkan. Panel memuat 20 komentar terbaru dan jumlah seluruh komentar. Mode Peta saja tetap berupa tautan tanpa interaksi akun.
+
 ## Tautan dan subdomain
 
 Foto bersifat privat secara default. Aktifkan “Tampilkan di galeri publik” pada foto yang ingin dibagikan. Berkas publik hanya dapat diambil selama foto masih aktif dan galeri diterbitkan.

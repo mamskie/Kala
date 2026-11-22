@@ -1,4 +1,5 @@
 import { firebaseConfig } from "./firebase-config.mjs";
+import { gallerySocial } from "./social.mjs";
 
 export async function connect() {
   const base = "https://www.gstatic.com/firebasejs/11.10.0/";
@@ -18,6 +19,7 @@ export async function connect() {
   }
 
   return {
+    social: gallerySocial(db, database, session),
     request: (uid, place, name) => db.setDoc(db.doc(database, "regionRequests", uid, "places", place), {
       name, requestedAt: db.serverTimestamp(),
     }),
