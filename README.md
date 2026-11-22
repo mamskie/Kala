@@ -1,22 +1,24 @@
-# Atlas Kenangan
+# Kala
 
 Galeri foto di atas peta Jawa dan pulau-pulau yang termasuk wilayah administratifnya, termasuk Madura. Tanpa konfigurasi Firebase, foto mode demo disimpan di IndexedDB di browser yang sama.
 
-## Sambungkan Firebase
+## Firebase dan Vercel
 
-1. Daftarkan aplikasi Web di proyek Firebase. Isi konfigurasi Web yang ditampilkan Firebase Console di `dist/firebase-config.mjs`. Jangan gunakan kunci akun layanan.
-2. Aktifkan Google di Authentication. Tambahkan domain aplikasi ke Authorized domains.
-3. Buat Cloud Firestore default dan aktifkan Cloud Storage. Cloud Storage for Firebase memerlukan paket Blaze. Publikasikan rules dengan `firebase deploy --only firestore:rules,storage --project PROJECT_ID`. Beri izin lintas layanan Cloud Storage ke Firestore ketika diminta.
-4. Setel CORS bucket untuk origin situs dan metode GET agar SDK dapat membaca foto sebagai Blob. Lihat https://firebase.google.com/docs/storage/web/download-files#cors_configuration.
-5. Sajikan direktori `dist` dari HTTPS. Uji dua akun, penerbitan tautan publik, dan pencabutan akses.
+1. Firebase Auth dan Firestore menggunakan proyek `kala-me`. Terapkan aturan akses dari repo dengan `npx firebase-tools deploy --only firestore:rules --project kala-me` menggunakan akun yang punya izin. Aturan juga bisa dipublikasikan dari tab Rules di Firebase Console.
+2. Impor repo ke Vercel. Konfigurasi buildless di `vercel.json` menyajikan `dist` dan fungsi `/api/photo`.
+3. Di Vercel, hubungkan satu **Vercel Blob store dengan akses Private**. Pastikan `BLOB_READ_WRITE_TOKEN` tersedia untuk lingkungan Preview dan Production yang akan dipakai. Vercel menyediakan token ketika store disambungkan. Token hanya digunakan oleh fungsi server.
+4. Deploy Preview, lalu tambahkan hostname Preview ke **Authentication → Settings → Authorized domains** di Firebase.
+5. Uji masuk dengan dua akun, unggah, buka album privat, tandai satu foto publik, terbitkan galeri, dan cek bahwa akses publik berhenti saat foto diprivatkan atau dipindahkan ke tong sampah.
+
+Firebase Cloud Storage dan paket Blaze tidak diperlukan untuk penyimpanan foto. Foto hasil kompresi dibatasi 4 MiB agar bisa dikirim lewat fungsi Vercel.
 
 ## Tautan dan subdomain
 
 Foto bersifat privat secara default. Aktifkan “Tampilkan di galeri publik” pada foto yang ingin dibagikan. Berkas publik hanya dapat diambil selama foto masih aktif dan galeri diterbitkan.
 
-Foto yang masuk tong sampah dapat dipulihkan selama 30 hari. Pada mode demo, aplikasi membersihkan foto kedaluwarsa saat demo dibuka. Untuk Firebase produksi, jadwalkan pekerjaan admin yang menghapus objek Storage dan dokumen `trashedPhotos` yang kedaluwarsa. Aturan Firebase menutup pemulihan kedaluwarsa, sementara pembersihan fisik berkas memerlukan pekerjaan admin tersebut.
+Foto yang masuk tong sampah dapat dipulihkan selama 30 hari. Pada mode demo, aplikasi membersihkan foto kedaluwarsa saat demo dibuka. Pembersihan fisik objek Blob dan dokumen `trashedPhotos` yang kedaluwarsa memerlukan pekerjaan admin terjadwal. Aturan Firebase menutup pemulihan setelah masa tersebut.
 
-Tanpa domain induk, tombol bagikan menghasilkan `/?galeri=nama`. Untuk `nama.atlas.example.com`, arahkan DNS wildcard ke hosting yang mendukung wildcard dan sertifikat TLS, lalu isi `galleryDomain` dengan `atlas.example.com`. Semua host galeri harus menyajikan direktori `dist` yang sama. Gunakan domain utama untuk login dan tambahkan CORS GET untuk origin galeri. Untuk subdomain arbitrer, konfigurasi CORS bucket dapat memakai origin `*` dengan SDK bearer token. Aturan Firebase tetap menentukan siapa yang dapat membaca foto.
+Tanpa domain induk, tombol bagikan menghasilkan `/?galeri=nama`. Untuk `nama.kala.example.com`, hubungkan domain wildcard ke proyek Vercel dan isi `galleryDomain` dengan `kala.example.com`. Semua host galeri harus menyajikan aplikasi dan fungsi foto dari proyek yang sama. Login berlangsung di domain utama.
 
 ## Data peta
 

@@ -2,17 +2,20 @@ import { firebaseConfig } from "./firebase-config.mjs";
 
 export async function connect() {
   const base = "https://www.gstatic.com/firebasejs/11.10.0/";
-  const [app, auth, db, storage] = await Promise.all(
-    ["app", "auth", "firestore", "storage"].map(name => import(base + "firebase-" + name + ".js"))
+  const [app, auth, db] = await Promise.all(
+    ["app", "auth", "firestore"].map(name => import(base + "firebase-" + name + ".js"))
   );
   const instance = app.initializeApp(firebaseConfig);
   const session = auth.getAuth(instance);
   const database = db.getFirestore(instance);
-  const bucket = storage.getStorage(instance);
   const profileRef = uid => db.doc(database, "profiles", uid);
   const slugRef = slug => db.doc(database, "galleries", slug);
   const photoList = uid => db.collection(database, "profiles", uid, "photos");
   const trashList = uid => db.collection(database, "profiles", uid, "trashedPhotos");
+  async function authorization(uid) {
+    if (session.currentUser?.uid !== uid) throw new Error("Masuk kembali untuk mengakses foto.");
+    return "Bearer " + await session.currentUser.getIdToken();
+  }
 
   return {
     request: (uid, place, name) => db.setDoc(db.doc(database, "regionRequests", uid, "places", place), {
@@ -51,20 +54,23 @@ export async function connect() {
       });
     },
     async save(uid, region, blob, date) {
-      const doc = db.doc(photoList(uid));
-      const object = storage.ref(bucket, "memories/" + uid + "/" + doc.id);
-      const details = { region, created: Date.now(), date };
-      await storage.uploadBytes(object, blob, { contentType: blob.type, cacheControl: "private, no-store" });
-      try {
-        await db.setDoc(doc, details);
-      } catch (error) {
-        await storage.deleteObject(object).catch(console.error);
-        throw error;
-      }
-      return { id: doc.id, ...details, blob };
+      const params = new URLSearchParams({ region, date });
+      const response = await fetch("/api/photo?" + params, {
+        method: "POST",
+        headers: { Authorization: await authorization(uid), "Content-Type": "application/octet-stream" },
+        body: blob,
+      });
+      if (!response.ok) throw new Error("Foto gagal disimpan (" + response.status + ").");
+      return { ...await response.json(), blob };
     },
-    async photo(uid, id) {
-      return storage.getBlob(storage.ref(bucket, "memories/" + uid + "/" + id), 5 * 1024 * 1024);
+    async photo(uid, id, publicSlug) {
+      const params = new URLSearchParams({ uid, id });
+      if (publicSlug) params.set("gallery", publicSlug);
+      const response = await fetch("/api/photo?" + params, {
+        headers: publicSlug ? {} : { Authorization: await authorization(uid) },
+      });
+      if (!response.ok) throw new Error("Foto gagal dimuat (" + response.status + ").");
+      return response.blob();
     },
     async publish(uid, next) {
       await db.runTransaction(database, async transaction => {

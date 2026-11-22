@@ -235,7 +235,7 @@ function updatePhotoInfo(photo) {
 
 async function photoUrl(photo) {
   let blob = photo.blob;
-  if (!blob) blob = await cloud.photo(uid, photo.id);
+  if (!blob) blob = await cloud.photo(uid, photo.id, publicSlug);
   return URL.createObjectURL(blob);
 }
 
@@ -522,7 +522,7 @@ async function prepare(file) {
   canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   const image = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", .84));
-  if (!image || image.size > 5 * 1024 * 1024) throw new Error("Foto ini gagal dikompresi.");
+  if (!image || image.size > 4 * 1024 * 1024) throw new Error("Foto hasil kompresi melebihi 4 MB.");
   return image;
 }
 
