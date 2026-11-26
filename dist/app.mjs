@@ -47,6 +47,11 @@ let slideshow;
 let trashRecords = [];
 let slugCheck = 0;
 let stopSocial;
+let stopOwnerRequests;
+let stopMapSync;
+let stopVisitorAccess;
+let stopVisitorPhotos;
+const guestMap = () => Boolean(publicSlug && !user);
 let socialGeneration = 0;
 const filteredPhotos = () => records.filter(photo => !photo.deletedAt
   && (!yearFilter || memoryDay(photo).startsWith(yearFilter))
@@ -142,7 +147,6 @@ function draw(data, locked = false) {
   }
   map.append(labels);
   map.append(pinLayer);
-  $("search").placeholder = "Contoh: Kota Bandung";
   $("search").disabled = false;
   render();
 }
@@ -159,14 +163,14 @@ function select(id, focus = false) {
     setView([box.x + (box.width-width)/2, box.y + (box.height-height)/2, width, height]);
   }
   render();
-  if (changed && !mapOnly && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (changed && !mapOnly && !guestMap() && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const panel = $("region").closest("aside");
     panel.getAnimations().forEach(animation => animation.cancel());
     panel.animate([{opacity:.6, transform:"translateY(8px)"}, {opacity:1, transform:"translateY(0)"}],
       {duration:280, easing:"cubic-bezier(.2,.8,.2,1)"});
     regions.get(id).path.animate([{strokeWidth:4}, {strokeWidth:1.55}], {duration:420, easing:"ease-out"});
   }
-  if (!mapOnly && matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
+  if (!mapOnly && !guestMap() && matchMedia("(max-width:760px)").matches) $("region").scrollIntoView({ block:"nearest" });
 }
 
 function albumPosition() {
@@ -262,12 +266,16 @@ function drawPins(grouped) {
 
 async function render() {
   const generation = ++renderId;
-  if (mapOnly) {
+  if (mapOnly || guestMap()) {
     for (const [id, {path, locked}] of regions) {
       const marked = !locked && sharedRegions.has(id);
       path.classList.toggle("filled", marked);
       path.dataset.heat = marked ? "1" : "0";
       path.classList.toggle("selected", id === selected);
+      if (guestMap() && !locked) {
+        const {name, province} = regions.get(id);
+        path.firstChild.textContent = name + ", " + province;
+      }
     }
     const place = regions.get(selected);
     $("mapSelection").hidden = !place;
@@ -316,8 +324,8 @@ async function render() {
   for (const [id, { path, name, province, locked }] of regions) {
     const entry = grouped.get(id);
     const count = entry?.count || 0;
-    path.classList.toggle("filled", count > 0);
-    path.dataset.heat = count >= 6 ? "3" : count >= 3 ? "2" : count ? "1" : "0";
+    path.classList.toggle("filled", count > 0 || Boolean(publicSlug && sharedRegions.has(id)));
+    path.dataset.heat = count >= 6 ? "3" : count >= 3 ? "2" : count || (publicSlug && sharedRegions.has(id)) ? "1" : "0";
     path.classList.toggle("selected", id === selected);
     if (!locked) path.firstChild.textContent = name + ", " + province +
       (entry ? " · " + count + " foto · terakhir " + memoryLabel(entry.latest) : "");
@@ -812,6 +820,7 @@ async function publish(next) {
     if (generation !== sessionId) return;
     profile = { slug: next };
     connectSocial(user, next ? uid : null);
+    watchOwnerAccess(next ? uid : null);
     showLink();
     $("shareError").textContent = next ? "Galeri diterbitkan." : "Galeri sekarang privat.";
   } catch (error) {
@@ -831,6 +840,8 @@ async function loadAccount(account) {
   user = account;
   uid = undefined;
   profile = undefined;
+  stopMapSync?.();
+  watchOwnerAccess(null);
   connectSocial(null, null);
   records = [];
   if ($("viewer").open) $("viewer").close();
@@ -847,6 +858,10 @@ async function loadAccount(account) {
     records = nextRecords;
     profile = nextProfile;
     connectSocial(account, nextProfile?.slug ? uid : null);
+    watchOwnerAccess(nextProfile?.slug ? uid : null);
+    stopMapSync = cloud.syncRegions(uid, () => {
+      if (generation === sessionId) message("Penanda peta gagal disinkronkan.");
+    });
     message("");
     render();
   } catch {
@@ -940,24 +955,149 @@ function connectSocial(account, galleryUid, countView = false) {
   };
 }
 
+function watchOwnerAccess(owner) {
+  stopOwnerRequests?.();
+  $("accessRequests").hidden = !owner;
+  $("accessList").replaceChildren();
+  $("accessError").textContent = "";
+  if (!owner) return;
+  stopOwnerRequests = cloud.watchRequests(owner, requests => {
+    const list = $("accessList");
+    list.replaceChildren();
+    if (!requests.length) {
+      const row = document.createElement("li");
+      row.textContent = "Belum ada permintaan akses.";
+      list.append(row);
+    }
+    for (const request of requests) {
+      const row = document.createElement("li");
+      const approved = request.status === "approved";
+      row.textContent = request.name + (approved ? " · Disetujui " : " · Menunggu ");
+      const actions = approved
+        ? [["Cabut akses", cloud.removeAccess]]
+        : [["Setujui", cloud.approveAccess], ["Tolak", cloud.removeAccess]];
+      for (const [label, action] of actions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.onclick = async () => {
+          for (const control of row.querySelectorAll("button")) control.disabled = true;
+          $("accessError").textContent = "";
+          try { await action(owner, request.id); }
+          catch {
+            for (const control of row.querySelectorAll("button")) control.disabled = false;
+            $("accessError").textContent = "Perubahan akses gagal disimpan.";
+          }
+        };
+        row.append(button);
+      }
+      list.append(row);
+    }
+  }, () => { $("accessError").textContent = "Permintaan akses gagal dimuat."; });
+}
+
+function loadVisitor(account) {
+  const generation = ++sessionId;
+  stopVisitorAccess?.();
+  stopVisitorPhotos?.();
+  user = account;
+  records = [];
+  if ($("viewer").open) $("viewer").close();
+  wallMode = recapMode = previousYear = false;
+  yearFilter = "";
+  $("workspace").hidden = false;
+  $("wall").hidden = $("recapSummary").hidden = $("timeline").hidden = true;
+  albumPanel.hidden = document.querySelector(".memory-tools").hidden = document.querySelector(".stats").hidden = !account;
+  $("workspace").style.gridTemplateColumns = account ? "" : "minmax(0, 1fr)";
+  $("account").textContent = account ? "Keluar" : "Masuk dengan Google";
+  document.querySelector(".heat-key").textContent = account ? "1–2 / 3–5 / 6+ foto" : "Wilayah ditandai";
+  $("galleryIntro").textContent = account ? "Jelajahi tempat dan foto yang dibagikan di galeri ini."
+    : "Jelajahi wilayah yang ditandai. Masuk untuk membuka album publik.";
+  $("galleryAccess").hidden = $("shareGallery").hidden = !account;
+  $("askAccess").hidden = true;
+  $("accessStatus").textContent = "";
+  $("mapSelection").hidden = true;
+  connectSocial(account, account ? uid : null, true);
+  message("");
+  render();
+  if (!account) {
+    for (const url of photoUrls) URL.revokeObjectURL(url);
+    photoUrls.clear();
+    $("full").removeAttribute("src");
+    $("downloadPhoto").removeAttribute("href");
+    for (const id of ["photos", "filmstrip", "wall", "results", "photoCaption", "photoPeople", "photoDate", "photoRegion"]) {
+      $(id).replaceChildren();
+    }
+    $("search").value = "";
+    pinLayer.replaceChildren();
+    return;
+  }
+
+  $("shareGallery").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(location.origin + location.pathname + location.search);
+      message("Tautan galeri disalin.");
+    } catch { message("Salin tautan dari bilah alamat browser."); }
+  };
+  function watchPhotos(publicOnly) {
+    stopVisitorPhotos?.();
+    records = [];
+    if ($("viewer").open) $("viewer").close();
+    render();
+    stopVisitorPhotos = cloud.watchGalleryPhotos(uid, publicOnly, photos => {
+      if (generation !== sessionId) return;
+      if (viewedPhoto && !photos.some(photo => photo.id === viewedPhoto.id) && $("viewer").open) $("viewer").close();
+      records = photos;
+      render();
+    }, () => {
+      if (generation !== sessionId) return;
+      records = [];
+      if ($("viewer").open) $("viewer").close();
+      message("Foto gagal dimuat.");
+      render();
+    });
+  }
+  if (account.uid === uid) { watchPhotos(false); return; }
+  watchPhotos(true);
+  let currentAccess;
+  stopVisitorAccess = cloud.watchAccess(uid, account.uid, state => {
+    if (generation !== sessionId) return;
+    if ((state === "approved") !== (currentAccess === "approved")) watchPhotos(state !== "approved");
+    currentAccess = state;
+    $("askAccess").hidden = Boolean(state);
+    $("accessStatus").textContent = state === "approved" ? "Akses foto privat disetujui."
+      : state === "pending" ? "Permintaan akses menunggu persetujuan." : "";
+  }, () => { if (generation === sessionId) $("accessStatus").textContent = "Status akses gagal dimuat."; });
+  $("askAccess").onclick = async () => {
+    const button = $("askAccess");
+    button.disabled = true;
+    try { await cloud.askAccess(uid); }
+    catch {
+      if (generation === sessionId) $("accessStatus").textContent = "Permintaan akses gagal dikirim.";
+    } finally { button.disabled = false; }
+  };
+}
+
 async function start() {
   $("account").hidden = mapOnly || Boolean(publicSlug && !firebaseConfig);
   $("share").hidden = Boolean(publicSlug) || mapOnly;
   if (mapOnly) {
     $("title").textContent = "Peta kenangan";
     $("galleryIntro").textContent = "Jelajahi wilayah yang ditandai di Kala.";
-    $("search").previousElementSibling.textContent = "Cari daerah atau negara";
   }
   if (publicSlug) {
-    $("galleryIntro").textContent = "Jelajahi tempat dan foto yang dibagikan di galeri ini.";
+    loadVisitor(null);
     if (slugPattern.test(publicSlug)) $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
   }
-  fetch("/regions.json").then(response => {
+  fetch("/regions.json", { signal: AbortSignal.timeout(15000) }).then(response => {
     if (!response.ok) throw new Error("Peta gagal dimuat");
     return response.json();
-  }).then(draw).catch(() => {
-    $("region").textContent = "Peta gagal dimuat";
-    $("search").placeholder = "Peta gagal dimuat";
+  }).then(data => {
+    draw(data);
+    $("mapLoading").hidden = true;
+  }).catch(() => {
+    $("mapLoading").classList.add("map-loading-failed");
+    $("mapLoadingText").textContent = "Peta gagal dimuat. Muat ulang halaman untuk mencoba lagi.";
   });
   fetch("/world.json").then(response => {
     if (!response.ok) throw new Error("Peta dunia gagal dimuat");
@@ -983,14 +1123,11 @@ async function start() {
   if (!publicSlug) { cloud.subscribe(loadAccount); return; }
   uid = slugPattern.test(publicSlug) ? await cloud.gallery(publicSlug) : undefined;
   if (!uid) { message("Galeri ini tidak ditemukan atau sudah dijadikan privat."); return; }
-  cloud.subscribe(account => {
-    user = account;
-    $("account").textContent = account ? "Keluar" : "Masuk dengan Google";
-    connectSocial(account, uid, true);
-  });
-  $("title").textContent = titleCase(publicSlug.replaceAll("-", " "));
-  records = await cloud.list(uid, true);
-  render();
+  cloud.watchRegions(uid, values => {
+    sharedRegions = new Set(values.filter(region => typeof region === "string"));
+    render();
+  }, () => message("Penanda wilayah galeri gagal dimuat."));
+  cloud.subscribe(loadVisitor);
 }
 
 start().catch(error => {

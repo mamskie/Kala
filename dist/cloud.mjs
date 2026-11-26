@@ -13,8 +13,12 @@ export async function connect() {
   const slugRef = slug => db.doc(database, "galleries", slug);
   const photoList = uid => db.collection(database, "profiles", uid, "photos");
   const trashList = uid => db.collection(database, "profiles", uid, "trashedPhotos");
+  const mapRef = uid => db.doc(database, "galleryMaps", uid);
+  const accessList = uid => db.collection(profileRef(uid), "access");
+  const accessRef = (uid, viewer) => db.doc(accessList(uid), viewer);
+
   async function authorization(uid) {
-    if (session.currentUser?.uid !== uid) throw new Error("Masuk kembali untuk mengakses foto.");
+    if (!session.currentUser || session.currentUser.uid !== uid) throw new Error("Masuk kembali untuk mengakses foto.");
     return "Bearer " + await session.currentUser.getIdToken();
   }
 
@@ -32,10 +36,49 @@ export async function connect() {
     async gallery(slug) {
       return (await db.getDoc(slugRef(slug))).data()?.uid;
     },
-    async list(uid, published = false) {
+    watchRegions(uid, onRegions, onError) {
+      return db.onSnapshot(mapRef(uid), snapshot => onRegions(snapshot.data()?.regions || []), onError);
+    },
+    syncRegions(uid, onError) {
+      let previous;
+      return db.onSnapshot(photoList(uid), {includeMetadataChanges: true}, snapshot => {
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        const regions = [...new Set(snapshot.docs.map(photo => photo.data().region))].sort().slice(0, 119);
+        const serialized = JSON.stringify(regions);
+        if (serialized === previous) return;
+        previous = serialized;
+        db.setDoc(mapRef(uid), {regions}).catch(error => {
+          if (previous === serialized) previous = undefined;
+          onError(error);
+        });
+      }, onError);
+    },
+    watchAccess: (uid, viewer, onAccess, onError) =>
+      db.onSnapshot(accessRef(uid, viewer), {includeMetadataChanges: true}, snapshot => {
+        if (!snapshot.metadata.fromCache) onAccess(snapshot.data()?.status);
+      }, onError),
+    watchRequests: (uid, onRequests, onError) => db.onSnapshot(accessList(uid), snapshot => {
+      onRequests(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+    }, onError),
+    async askAccess(uid) {
+      const account = session.currentUser;
+      const token = await account.getIdTokenResult();
+      await db.setDoc(accessRef(uid, account.uid), {
+        name: token.claims.name ?? "Pengunjung", status: "pending", requestedAt: db.serverTimestamp(),
+      });
+    },
+    approveAccess: (uid, viewer) => db.updateDoc(accessRef(uid, viewer), {status: "approved"}),
+    removeAccess: (uid, viewer) => db.deleteDoc(accessRef(uid, viewer)),
+    watchGalleryPhotos(uid, publicOnly, onPhotos, onError) {
       const photos = photoList(uid);
-      const snapshot = await db.getDocs(published ? db.query(photos, db.where("visibility", "==", "public")) : photos);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const query = publicOnly ? db.query(photos, db.where("visibility", "==", "public")) : photos;
+      return db.onSnapshot(query, {includeMetadataChanges: true}, snapshot => {
+        if (!snapshot.metadata.fromCache) onPhotos(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      }, onError);
+    },
+    async list(uid) {
+      const snapshot = await db.getDocs(photoList(uid));
+      return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
     },
     async trash(uid) {
       const snapshot = await db.getDocs(trashList(uid));
@@ -69,7 +112,7 @@ export async function connect() {
       const params = new URLSearchParams({ uid, id });
       if (publicSlug) params.set("gallery", publicSlug);
       const response = await fetch("/api/photo?" + params, {
-        headers: publicSlug ? {} : { Authorization: await authorization(uid) },
+        headers: { Authorization: await authorization(publicSlug ? session.currentUser?.uid : uid) },
       });
       if (!response.ok) throw new Error("Foto gagal dimuat (" + response.status + ").");
       return response.blob();

@@ -16,7 +16,9 @@ Galeri yang diterbitkan menampilkan interaksi bagi pengunjung yang sudah masuk. 
 
 ## Tautan dan subdomain
 
-Foto bersifat privat secara default. Aktifkan “Tampilkan di galeri publik” pada foto yang ingin dibagikan. Berkas publik hanya dapat diambil selama foto masih aktif dan galeri diterbitkan.
+Foto bersifat privat secara default. Pengunjung tanpa login hanya melihat wilayah yang ditandai. Pengunjung yang masuk bisa melihat foto dengan opsi “Tampilkan di galeri publik” dan meminta akses ke foto privat. Pemilik bisa menyetujui, menolak, atau mencabut akses melalui **Permintaan akses** di beranda. Persetujuan berlaku pada seluruh foto privat di galeri, termasuk foto baru. API foto memeriksa izin pada setiap permintaan.
+
+Setelah aturan Firestore dan aplikasi diperbarui, pemilik galeri lama perlu membuka beranda dengan akun Google mereka sekali agar penanda wilayah tersinkronisasi. Uji tautan yang sama saat tanpa login, sebagai pengunjung, setelah persetujuan, dan setelah pencabutan.
 
 Foto yang masuk tong sampah dapat dipulihkan selama 30 hari. Pada mode demo, aplikasi membersihkan foto kedaluwarsa saat demo dibuka. Pembersihan fisik objek Blob dan dokumen `trashedPhotos` yang kedaluwarsa memerlukan pekerjaan admin terjadwal. Aturan Firebase menutup pemulihan setelah masa tersebut.
 

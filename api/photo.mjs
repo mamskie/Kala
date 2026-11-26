@@ -69,30 +69,26 @@ async function download(params, authorization) {
   const id = params.get("id") || "";
   if (!validUid(uid) || !validId(id)) return error("Foto tidak ditemukan.", 404);
   const slug = params.get("gallery");
-  if (!slug) {
-    try {
-      if (!authorization?.startsWith("Bearer ") || await firebaseUser(authorization.slice(7)) !== uid) {
-        return error("Foto tidak ditemukan.", 404);
-      }
-    } catch { return error("Foto tidak ditemukan.", 404); }
-  } else {
+  if (!authorization?.startsWith("Bearer ")) return error("Foto tidak ditemukan.", 404);
+  let viewer;
+  try { viewer = await firebaseUser(authorization.slice(7)); }
+  catch { return error("Foto tidak ditemukan.", 404); }
+  if (!slug && viewer !== uid) return error("Foto tidak ditemukan.", 404);
+  if (slug) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 40) return error("Galeri tidak ditemukan.", 404);
     const gallery = await fetch(firestore + "/galleries/" + slug, { cache: "no-store" });
     if (!gallery.ok || (await gallery.json()).fields?.uid?.stringValue !== uid) {
       return error("Galeri tidak ditemukan.", 404);
     }
   }
-  // Firestore checks the requesting Firebase user's ownership or the photo's current public visibility.
+  // Firestore checks the requesting Firebase user's ownership, visibility, or approved gallery access.
   const record = await fetch(firestore + photoPath(uid, id), {
-    headers: slug ? {} : { Authorization: authorization },
+    headers: { Authorization: authorization },
     cache: "no-store",
   });
   if (!record.ok) {
     if ([401, 403, 404].includes(record.status)) return error("Foto tidak ditemukan.", 404);
     return error("Foto gagal dimuat.", 502);
-  }
-  if (slug && (await record.json()).fields?.visibility?.stringValue !== "public") {
-    return error("Foto tidak ditemukan.", 404);
   }
   const result = await get(blobPath(uid, id), { access: "private" });
   if (!result || result.statusCode !== 200) return error("Foto tidak ditemukan.", 404);

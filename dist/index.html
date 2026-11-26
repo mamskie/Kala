@@ -20,6 +20,16 @@
     <div class="stats"><div><strong id="colored">0</strong> <span>daerah</span></div><div><strong id="total">0</strong> <span>foto</span></div></div>
   </div>
   <p id="status" role="status"></p>
+  <section id="galleryAccess" hidden>
+    <button id="askAccess" type="button" hidden>Minta akses foto privat</button>
+    <button id="shareGallery" type="button" hidden>Salin tautan galeri</button>
+    <p id="accessStatus" role="status"></p>
+  </section>
+  <section id="accessRequests" hidden>
+    <h2>Permintaan akses</h2>
+    <ul id="accessList"></ul>
+    <p id="accessError" role="status"></p>
+  </section>
   <nav class="memory-tools" aria-label="Tampilan kenangan">
     <button id="mapMode" type="button" aria-pressed="true">Peta</button>
     <button id="wallMode" type="button" aria-pressed="false">Scrapbook</button>
@@ -31,8 +41,10 @@
   <div class="timeline" id="timeline" hidden><label for="year">Linimasa</label><input id="year" type="range" min="0" value="0"><output id="yearLabel" for="year">Semua tahun</output></div>
   <div class="workspace" id="workspace">
     <section class="mapcard" aria-label="Peta dunia">
-      <div class="search"><label for="search">Cari daerah, caption, atau nama orang</label><input id="search" type="search" autocomplete="off" placeholder="Memuat peta…" disabled><div id="results"></div></div>
-      <div class="chart"><svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg><span class="map-compass" aria-hidden="true">N<i></i></span></div>
+      <div class="search"><input id="search" type="search" aria-label="Search" autocomplete="off" placeholder="Search" disabled><div id="results"></div></div>
+      <div class="chart">
+        <div id="mapLoading" class="map-loading" role="status"><span class="map-loading-spinner" aria-hidden="true"></span><span id="mapLoadingText">Memuat peta…</span></div>
+        <svg id="map" role="group" aria-label="Peta dunia interaktif dengan album aktif di Jawa" viewBox="0 0 1000 350"></svg><span class="map-compass" aria-hidden="true">N<i></i></span></div>
       <p id="mapSelection" class="map-selection" role="status" hidden></p>
       <div class="mapfoot"><div class="legend"><span>Belum ada foto</span><span class="heat-key">1–2 / 3–5 / 6+ foto</span><span>Terkunci</span></div><div class="zoom"><button id="minus" aria-label="Perkecil">−</button><button id="plus" aria-label="Perbesar">+</button><button id="world">Dunia</button><button id="reset">Indonesia</button><select id="mapTheme" aria-label="Tema peta"><option value="">Gelap</option><option value="light">Terang</option><option value="sepia">Sepia</option></select></div></div>
     </section>

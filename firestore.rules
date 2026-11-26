@@ -8,6 +8,10 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/profiles/$(uid))
         && get(/databases/$(database)/documents/profiles/$(uid)).data.slug is string;
     }
+    function approved(uid) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/profiles/$(uid)/access/$(request.auth.uid)).data.get('status', '') == 'approved';
+    }
     function validSlug(slug) {
       return slug is string && slug.size() >= 3 && slug.size() <= 30
         && slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
@@ -95,10 +99,24 @@ service cloud.firestore {
         && (resource == null || resource.data.slug == null ||
           resource.data.slug == request.resource.data.slug ||
           !existsAfter(/databases/$(database)/documents/galleries/$(resource.data.slug)));
+      match /access/{viewer} {
+        allow get: if owner(uid) || owner(viewer);
+        allow list: if owner(uid);
+        allow create: if owner(viewer) && viewer != uid && shared(uid)
+          && request.resource.data.keys().hasOnly(['name','status','requestedAt'])
+          && request.resource.data.name == request.auth.token.get('name', 'Pengunjung')
+          && request.resource.data.name is string && request.resource.data.name.size() <= 256
+          && request.resource.data.status == 'pending'
+          && request.resource.data.requestedAt == request.time;
+        allow update: if owner(uid) && resource.data.status == 'pending'
+          && request.resource.data.status == 'approved'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        allow delete: if owner(uid);
+      }
       match /photos/{photo} {
         allow delete: if owner(uid)
           && getAfter(/databases/$(database)/documents/profiles/$(uid)/trashedPhotos/$(photo)).data.deletedAt == request.time;
-        allow read: if owner(uid) || (shared(uid) && resource.data.visibility == 'public');
+        allow read: if owner(uid) || (request.auth != null && shared(uid) && (resource.data.visibility == 'public' || approved(uid)));
         allow create: if owner(uid) && validPhoto(request.resource.data)
           && request.resource.data.keys().hasOnly(['region','created','caption','people','date','coverAt','visibility'])
           && (!exists(/databases/$(database)/documents/profiles/$(uid)/trashedPhotos/$(photo))
@@ -116,6 +134,12 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['region','created','caption','people','date','coverAt','visibility','deletedAt'])
           && request.resource.data.deletedAt == request.time;
       }
+    }
+    match /galleryMaps/{uid} {
+      allow get: if shared(uid);
+      allow create, update: if owner(uid)
+        && request.resource.data.keys().hasOnly(['regions'])
+        && request.resource.data.regions is list && request.resource.data.regions.size() <= 119;
     }
     match /galleries/{slug} {
       allow get: if true;
